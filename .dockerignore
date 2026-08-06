@@ -1,0 +1,13 @@
+.git
+.github
+.DS_Store
+.env
+.venv
+.pytest_cache
+.ruff_cache
+__pycache__
+coverage
+dist
+widget/dist
+widget/node_modules
+*.log

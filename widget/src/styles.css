@@ -1,0 +1,509 @@
+:root {
+  color: #2f302b;
+  background: #ebe8df;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 0;
+  min-height: 100vh;
+  margin: 0;
+  background: #ebe8df;
+}
+
+button,
+select {
+  font: inherit;
+}
+
+button:focus-visible,
+select:focus-visible {
+  outline: 3px solid #78905c;
+  outline-offset: 2px;
+}
+
+.game-surface {
+  width: min(100% - 1.5rem, 43rem);
+  margin: 0 auto;
+  padding: clamp(0.5rem, 2vw, 1rem) 0;
+}
+
+.game-layout {
+  display: grid;
+  grid-template-columns: 1.45rem minmax(18rem, 38rem) 2.75rem;
+  gap: clamp(0.5rem, 1.5vw, 0.85rem);
+  align-items: stretch;
+}
+
+.wdl-bar {
+  display: flex;
+  min-height: 18rem;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid #77776f;
+  border-radius: 0.3rem;
+  background: #85867f;
+}
+
+.wdl-segment {
+  display: grid;
+  min-height: 1.15rem;
+  place-items: center;
+  transition: flex-basis 320ms ease;
+}
+
+.wdl-segment span {
+  font-size: 0.55rem;
+  font-weight: 850;
+  line-height: 1;
+}
+
+.wdl-segment--black {
+  background: #2e302d;
+  color: #f7f5ef;
+}
+
+.wdl-segment--draw {
+  background: #a8a89f;
+  color: #292a26;
+}
+
+.wdl-segment--white {
+  background: #f7f5ef;
+  color: #292a26;
+}
+
+.board-wrap {
+  position: relative;
+  width: 100%;
+  align-self: start;
+  box-shadow: 0 0.6rem 1.3rem rgb(57 47 37 / 18%);
+}
+
+.board-overlay,
+.result-overlay {
+  position: absolute;
+  z-index: 4;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+}
+
+.board-overlay {
+  background: rgb(34 34 31 / 28%);
+  backdrop-filter: blur(2px);
+}
+
+.spinner {
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 3px solid rgb(255 255 255 / 45%);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+
+.result-overlay {
+  padding: 1rem;
+  background: rgb(31 32 28 / 66%);
+  color: #fff;
+  font-size: clamp(1rem, 3vw, 1.35rem);
+  font-weight: 800;
+  text-align: center;
+  backdrop-filter: blur(2px);
+}
+
+.toolbar-column {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 0.65rem;
+  align-self: start;
+}
+
+.mini-toolbar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+
+.tool-button {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid #c7c4b9;
+  border-radius: 0.6rem;
+  background: rgb(247 245 239 / 76%);
+  color: #575950;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.tool-button svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.tool-button:hover:not(:disabled) {
+  border-color: #a7a99d;
+  background: #f8f7f2;
+  color: #33352f;
+}
+
+.tool-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
+}
+
+.tool-button--primary {
+  border-color: #769656;
+  background: #769656;
+  color: #fff;
+}
+
+.tool-button--primary:hover:not(:disabled) {
+  border-color: #668449;
+  background: #668449;
+  color: #fff;
+}
+
+.button-spinner {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 720ms linear infinite;
+}
+
+.new-game-control {
+  position: relative;
+}
+
+.difficulty-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 0.4rem);
+  right: 0;
+  bottom: auto;
+  left: auto;
+  width: min(9.5rem, calc(100vw - 0.75rem));
+  overflow: hidden;
+  padding: 0.3rem;
+  border: 1px solid #c9c5b9;
+  border-radius: 0.6rem;
+  background: #fffdf8;
+  box-shadow: 0 0.75rem 1.8rem rgb(52 48 40 / 20%);
+}
+
+.difficulty-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0.6rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: #3e4039;
+  cursor: pointer;
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.difficulty-menu button:hover,
+.difficulty-menu button:focus-visible {
+  background: #eef1e9;
+}
+
+.menu-check {
+  width: 1rem !important;
+  height: 1rem !important;
+  color: #68864b;
+}
+
+.opening-failure {
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.8rem;
+  padding: 1.5rem;
+  border-radius: 6px;
+  background: rgb(42 37 33 / 78%);
+  color: #fff;
+  text-align: center;
+  backdrop-filter: blur(3px);
+}
+
+.opening-failure p {
+  max-width: 24rem;
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.opening-failure button {
+  justify-self: center;
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-radius: 0.45rem;
+  background: #f7f5ef;
+  color: #34362f;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.issue-strip {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid;
+  border-radius: 0.55rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.issue-strip--error {
+  border-color: #e1b8ae;
+  background: #f8e6e1;
+  color: #853c30;
+}
+
+.issue-strip--warning {
+  border-color: #dfc899;
+  background: #f7efd9;
+  color: #71551d;
+}
+
+.issue-strip strong,
+.issue-strip p {
+  margin: 0;
+}
+
+.issue-strip p {
+  margin-top: 0.12rem;
+  overflow-wrap: anywhere;
+}
+
+.issue-strip details {
+  min-width: max-content;
+}
+
+.issue-strip summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.issue-strip pre {
+  max-width: 20rem;
+  overflow: auto;
+  margin: 0.45rem 0 0;
+  white-space: pre-wrap;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  z-index: 20;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgb(26 27 24 / 58%);
+}
+
+.promotion-dialog {
+  width: min(100%, 25rem);
+  padding: 1.2rem;
+  border-radius: 0.75rem;
+  background: #fffdf8;
+  box-shadow: 0 1rem 3rem rgb(0 0 0 / 25%);
+  text-align: center;
+}
+
+.promotion-dialog p {
+  margin: 0 0 1rem;
+  font-weight: 800;
+}
+
+.promotion-dialog > div {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.promotion-dialog button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.55rem 0.25rem;
+  border: 1px solid #d6d0c2;
+  border-radius: 0.45rem;
+  background: #f2eee4;
+  cursor: pointer;
+  color: #292a26;
+  font-size: 0.7rem;
+}
+
+.promotion-dialog button span:first-child {
+  font-size: 2rem;
+  line-height: 1;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 680px) {
+  .game-surface {
+    width: min(100% - 0.75rem, 42rem);
+    padding-block: 0.375rem;
+  }
+
+  .game-layout {
+    grid-template-columns: 1.25rem minmax(0, 1fr);
+  }
+
+  .wdl-bar {
+    min-height: 0;
+  }
+
+  .toolbar-column {
+    grid-column: 1 / -1;
+    flex-direction: row;
+    align-items: flex-start;
+  }
+
+  .issue-strip {
+    grid-column: 1 / -1;
+  }
+
+  .mini-toolbar {
+    flex-direction: row;
+  }
+
+  .difficulty-menu {
+    top: auto;
+    right: auto;
+    bottom: calc(100% + 0.4rem);
+    left: 0;
+  }
+
+  .difficulty-menu button {
+    min-height: 2.75rem;
+  }
+}
+
+body:has(.game-surface--pip),
+body:has(.game-surface--pip) #root {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.game-surface--pip {
+  --pip-message-reserve: 0rem;
+  --pip-board-size: min(
+    calc(100vw - 6rem),
+    calc(100dvh - 2.25rem - var(--pip-message-reserve))
+  );
+
+  display: grid;
+  width: 100%;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0.5rem;
+  overflow: hidden;
+  place-content: center;
+}
+
+.game-surface--pip.game-surface--has-issue {
+  --pip-message-reserve: 4.5rem;
+}
+
+.game-surface--pip .game-layout {
+  width: max-content;
+  grid-template-columns: 1.25rem var(--pip-board-size) 2.75rem;
+  grid-template-rows: var(--pip-board-size) auto;
+  gap: 0.5rem;
+  align-items: stretch;
+}
+
+.game-surface--pip .wdl-bar {
+  height: var(--pip-board-size);
+  min-height: 0;
+}
+
+.game-surface--pip .board-wrap {
+  width: var(--pip-board-size);
+  height: var(--pip-board-size);
+}
+
+.game-surface--pip .toolbar-column {
+  grid-column: auto;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.game-surface--pip .mini-toolbar {
+  flex-direction: column;
+}
+
+.game-surface--pip .difficulty-menu {
+  top: 0;
+  right: calc(100% + 0.5rem);
+  bottom: auto;
+  left: auto;
+}
+
+.game-surface--pip .issue-strip {
+  grid-column: 2 / -1;
+  max-height: 4rem;
+  overflow: auto;
+}
+
+.game-surface--pip .issue-strip details {
+  min-width: 0;
+}
+
+.game-surface--pip .issue-strip pre {
+  max-height: 2.75rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

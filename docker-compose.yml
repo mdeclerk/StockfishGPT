@@ -1,0 +1,10 @@
+services:
+  mcp-app:
+    image: ghcr.io/mdeclerk/stockfishgpt:latest
+    build: .
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://mcp-app:8000 --http-host-header localhost:8000

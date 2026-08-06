@@ -1,0 +1,1 @@
+"""StockfishGPT MCP app."""

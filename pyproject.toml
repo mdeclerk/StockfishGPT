@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stockfish-gpt"
+version = "0.1.0"
+description = "An interactive, engine-grounded chess coach for ChatGPT."
+license = "GPL-3.0-or-later"
+requires-python = ">=3.14,<3.15"
+dependencies = [
+    "chess>=1.11.2,<2",
+    "mcp>=1.28.1,<2",
+    "pydantic>=2.13,<3",
+    "starlette>=1.3,<2",
+    "uvicorn>=0.31,<1",
+]
+
+[project.scripts]
+mcp-app = "mcp_app.main:main"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28,<1",
+    "pytest>=8.4,<9",
+    "pytest-asyncio>=1.0,<2",
+    "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/mcp_app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["integration: requires an explicitly enabled external dependency"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["mcp_app"]
