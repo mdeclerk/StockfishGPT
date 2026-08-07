@@ -45,7 +45,7 @@ PLAY_WHITE_MOVE_DESCRIPTION = (
     "Play one legal White move, then play Stockfish's reply unless White's move "
     "ends the game."
 )
-UNDO__WHITE_MOVE_DESCRIPTION = (
+UNDO_WHITE_MOVE_DESCRIPTION = (
     "Undo the last White move and Stockfish reply, or only White's move if it "
     "ended the game."
 )
@@ -117,7 +117,7 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="undo_white_move",
         title="Undo White Move",
-        description=UNDO__WHITE_MOVE_DESCRIPTION,
+        description=UNDO_WHITE_MOVE_DESCRIPTION,
         annotations=DESTRUCTIVE,
         meta={"ui": {"visibility": ["app"]}},
         structured_output=True,

@@ -9,12 +9,6 @@ class PositionError(ChessServiceError):
     """The requested position cannot be worked with."""
 
 
-class InvalidPositionError(PositionError):
-    def __init__(self, fen: str) -> None:
-        self.fen = fen
-        super().__init__(f"Not a valid chess position: invalid FEN {fen!r}")
-
-
 class TerminalPositionError(PositionError):
     def __init__(self, fen: str) -> None:
         self.fen = fen

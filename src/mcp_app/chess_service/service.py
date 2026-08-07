@@ -136,7 +136,7 @@ class ChessService:
             if self._status(game.board) is not GameStatus.IN_PROGRESS:
                 raise TerminalPositionError(game.board.fen(en_passant="fen"))
             if game.board.turn != chess.WHITE:
-                raise NotPlayersTurnError
+                raise NotPlayersTurnError()
 
             board = game.board.copy(stack=True)
             move = self._legal_move(board, move_uci)

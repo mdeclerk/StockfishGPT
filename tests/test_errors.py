@@ -6,7 +6,6 @@ from mcp_app.chess_service.errors import (
     GameVersionError,
     InvalidAnalysisError,
     InvalidMoveError,
-    InvalidPositionError,
     PositionError,
     TerminalPositionError,
 )
@@ -25,7 +24,6 @@ from mcp_app.stockfish.errors import (
 @pytest.mark.parametrize(
     ("error", "branch"),
     [
-        (InvalidPositionError, PositionError),
         (TerminalPositionError, PositionError),
         (InvalidAnalysisError, ChessServiceError),
         (GameNotFoundError, ChessServiceError),
