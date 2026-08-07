@@ -13,40 +13,35 @@
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
 
 <p align="center">
-  <img src="docs/screenshots.drawio.png" alt="StockfishGPT screenshots" width=50%>
+  <img src="docs/screenshots.drawio.png" alt="StockfishGPT screenshots" width="50%">
 </p>
 
 ## Quick Start
 
-### 1. Install [Docker](https://docs.docker.com/get-docker/)
+1. **Install [Docker](https://docs.docker.com/get-docker/).**
 
-### 2. Start MCP App & Public HTTPS Tunnel
+2. **Start MCP App & Public HTTPS Tunnel.** Spin up MCP-App and cloudflared container:
 
-Spin up MCP-App and cloudflared container:
+   ```sh
+   docker compose up
+   ```
 
-```sh
-docker compose up
-```
+   Find public tunnel url `https://*.trycloudflare.com` in console output or search log explicitly:
 
-Find public tunnel url `https://*.try-cloudflare.com` in console output or search log explicitly:
+   ```sh
+   docker compose logs tunnel | grep trycloudflare
+   ```
 
-```sh
-docker compose logs tunnel | grep trycloudflare
-```
+3. **Add MCP App in [ChatGPT](https://www.chatgpt.com).** Activate [Developer Mode](https://developers.openai.com/plugins/deploy/connect-chatgpt) (Settings → Security and login → Developer mode), then add a new plugin:
+   - Name: `StockfishGPT`
+   - URL: url from step 2 — don't forget to append `/mcp`!
+   - No Auth
 
-### 3. Add MCP App in [ChatGPT](www.chatgpt.com)
+4. **Start App:**
 
-- Activate [ChatGPT Developer Mode](https://developers.openai.com/plugins/deploy/connect-chatgpt) (www.chatgpt.com → Settings → Security and login → Developer mode)
-- Add New Plugin in Plugins Menu:
-  - Name: `StockfishGPT`
-  - URL: Copy & paste url from console output from **Step 2** - don't forget to append `/mcp`!
-  - No Auth
-
-### 4. Invoke App
-
-```sh
-@StockfishGPT play
-```
+   ```sh
+   @StockfishGPT play
+   ```
 
 ## Local Development
 
@@ -69,7 +64,13 @@ uv run mcp-app --wdir widget/dist
 
 ### Tests
 
-Run ruff and pytest:
+Frontend:
+
+```sh
+npm --prefix widget test
+```
+
+Backend:
 
 ```sh
 uv run ruff check .
@@ -96,18 +97,13 @@ Run app and start the inspector `npx @modelcontextprotocol/inspector@latest` wit
 Full e2e experience on ChatGPT target:
 - Run app via `uv run mcp-app --wdir widget/dist`
 - Start public tunnel `docker compose up tunnel` using cloudflared
-- Add app as ChatGPT Plugin as described in TL;DR section
+- Add app as ChatGPT Plugin as described in [Quick Start](#quick-start)
 
 ## Architecture
 
-The server owns each game and returns complete authoritative snapshots. The
-widget is a display client: it submits actions, renders the returned FEN and
-history, and keeps only ephemeral presentation state. MCP HTTP transport stays
-stateless (`stateless_http=True`), while the long-lived chess service keeps
-games in memory for the server process lifetime.
+The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`), while the long-lived chess service keeps games in memory for the server process lifetime.
 
-> ⚠️ `ui/update-model-context` cannot currently be applied reliably due to
-> [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
+> ⚠️ `ui/update-model-context` cannot currently be applied reliably due to [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
 
 <p align="center">
   <img src="docs/architecture.drawio.png" alt="StockfishGPT architecture" width="75%">
@@ -126,7 +122,7 @@ games in memory for the server process lifetime.
 ## Project Structure
 
 ```text
-:
+.
 ├── .github/workflows/    # GitHub CI
 ├── src/mcp_app/
 │   ├── mcp/              # FastMCP tools, resources, and wire schemas
