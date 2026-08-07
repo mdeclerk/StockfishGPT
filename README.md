@@ -13,7 +13,7 @@
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
 
 <p align="center">
-  <img src="docs/screenshots.drawio.png" alt="StockfishGPT screenshots" width="50%">
+  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="50%">
 </p>
 
 ## Quick Start
