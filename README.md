@@ -13,7 +13,7 @@
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
 
 <p align="center">
-  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="50%">
+  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="800">
 </p>
 
 ## Quick Start
@@ -106,7 +106,7 @@ The server owns each game and returns complete authoritative snapshots. The widg
 > ⚠️ `ui/update-model-context` cannot currently be applied reliably due to [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
 
 <p align="center">
-  <img src="docs/architecture.drawio.png" alt="StockfishGPT architecture" width="75%">
+  <img src="docs/architecture.drawio.png" alt="StockfishGPT architecture" width="741">
 </p>
 
 
