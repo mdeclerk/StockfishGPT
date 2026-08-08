@@ -5,6 +5,7 @@ import chess.engine
 import pytest
 from fakes import FirstMoveEngine, RecordingEngine, candidate_info
 
+import mcp_app.chess_service.service as service_module
 from mcp_app.chess_service.errors import (
     GameNotFoundError,
     GameVersionError,
@@ -271,3 +272,47 @@ async def test_invalid_identity_move_version_and_empty_undo_are_rejected() -> No
         await service.play_white_move(game.game_id, 0, "e2e5")
     with pytest.raises(NothingToUndoError, match="no moves"):
         await service.undo_white_move(game.game_id, 0)
+
+
+@pytest.mark.asyncio
+async def test_expired_game_is_evicted_on_access() -> None:
+    service = ChessService(FirstMoveEngine())
+    game = await service.start_game()
+
+    service._games[game.game_id].last_access -= service_module._GAME_TTL_SECONDS + 1
+
+    with pytest.raises(GameNotFoundError, match="not found"):
+        await service.get_game_state(game.game_id)
+    assert game.game_id not in service._games
+
+
+@pytest.mark.asyncio
+async def test_start_game_sweeps_expired_games() -> None:
+    service = ChessService(FirstMoveEngine())
+    stale = await service.start_game()
+    fresh = await service.start_game()
+
+    service._games[stale.game_id].last_access -= (
+        service_module._GAME_TTL_SECONDS + 1
+    )
+    await service.start_game()
+
+    assert stale.game_id not in service._games
+    assert fresh.game_id in service._games
+
+
+@pytest.mark.asyncio
+async def test_start_game_evicts_least_recently_used_game_at_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(service_module, "_MAX_GAMES", 2)
+    service = ChessService(FirstMoveEngine())
+    oldest = await service.start_game()
+    newest = await service.start_game()
+
+    await service.get_game_state(newest.game_id)
+    replacement = await service.start_game()
+
+    assert oldest.game_id not in service._games
+    assert newest.game_id in service._games
+    assert replacement.game_id in service._games

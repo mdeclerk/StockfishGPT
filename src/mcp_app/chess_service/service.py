@@ -5,6 +5,7 @@ import hashlib
 import math
 import secrets
 from dataclasses import dataclass, field
+from time import monotonic
 from typing import Protocol, runtime_checkable
 
 import chess
@@ -32,6 +33,8 @@ from mcp_app.chess_service.models import (
 _ADVICE_CANDIDATES = 3
 _ANALYSIS_NODES = 60_000
 _MOVE_NODES = 80_000
+_GAME_TTL_SECONDS = 3600.0
+_MAX_GAMES = 1024
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +79,7 @@ class _Game:
     version: int = 0
     outlooks: list[WinDrawLoss | None] = field(default_factory=lambda: [None])
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    last_access: float = field(default_factory=monotonic)
 
 
 class ChessService:
@@ -99,6 +103,12 @@ class ChessService:
         self,
         difficulty: Difficulty = Difficulty.CLUB,
     ) -> GameState:
+        self._sweep_expired()
+        if len(self._games) >= _MAX_GAMES:
+            oldest_id = min(
+                self._games, key=lambda game_id: self._games[game_id].last_access
+            )
+            del self._games[oldest_id]
         game_id = self._new_game_id()
         game = _Game(game_id=game_id, difficulty=difficulty)
         self._games[game_id] = game
@@ -187,9 +197,25 @@ class ChessService:
 
     def _get_game(self, game_id: str) -> _Game:
         try:
-            return self._games[game_id]
+            game = self._games[game_id]
         except KeyError as error:
             raise GameNotFoundError(game_id) from error
+        now = monotonic()
+        if now - game.last_access > _GAME_TTL_SECONDS:
+            del self._games[game_id]
+            raise GameNotFoundError(game_id)
+        game.last_access = now
+        return game
+
+    def _sweep_expired(self) -> None:
+        now = monotonic()
+        expired = [
+            game_id
+            for game_id, game in self._games.items()
+            if now - game.last_access > _GAME_TTL_SECONDS
+        ]
+        for game_id in expired:
+            del self._games[game_id]
 
     @staticmethod
     def _require_version(game: _Game, version: int) -> None:
