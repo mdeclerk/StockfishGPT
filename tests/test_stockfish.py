@@ -190,6 +190,22 @@ async def test_discarded_engine_stays_owned_for_restart() -> None:
 
 
 @pytest.mark.asyncio
+async def test_close_ignores_engine_quit_failure() -> None:
+    engine, protocol, transport, _ = fake_engine()
+
+    async def failing_quit() -> None:
+        raise chess.engine.EngineError("engine dead")
+
+    protocol.quit = failing_quit
+    await engine.start()
+
+    await engine.close()
+
+    assert transport.closed is True
+    assert engine.is_alive is False
+
+
+@pytest.mark.asyncio
 async def test_explicit_executable_is_used_without_path_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

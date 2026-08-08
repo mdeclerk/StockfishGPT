@@ -111,7 +111,11 @@ class StockfishEngine:
                 return
 
             try:
+                # Teardown swallows engine errors: the transport close below
+                # is the real cleanup, and a hung quit must not break shutdown.
                 await self._await_engine("shutdown", protocol.quit())
+            except EngineError:
+                pass
             finally:
                 if transport is not None:
                     transport.close()
