@@ -171,6 +171,25 @@ async def test_start_and_close_are_idempotent() -> None:
 
 
 @pytest.mark.asyncio
+async def test_discarded_engine_stays_owned_for_restart() -> None:
+    engine, transports, _ = restartable_engine()
+    await engine.start()
+    transports[0].crash()
+    board = chess.Board(AFTER_E4_FEN)
+
+    await engine.analyze(board, multipv=1, nodes=100)
+    transports[1].crash()
+
+    assert engine.is_alive is False
+    # Still owned: the next analysis restarts instead of raising
+    # EngineNotStartedError.
+    await engine.analyze(board, multipv=1, nodes=100)
+    assert len(transports) == 3
+    assert engine.is_alive is True
+    await engine.close()
+
+
+@pytest.mark.asyncio
 async def test_explicit_executable_is_used_without_path_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

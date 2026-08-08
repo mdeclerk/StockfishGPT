@@ -205,6 +205,10 @@ class StockfishEngine:
         return self._require_protocol()
 
     def _discard_locked(self) -> None:
+        # `_started` intentionally survives a discard: it means "owned" (the
+        # caller may still restart this engine), not "a process exists".
+        # Use `is_alive` to check for a live process; only `close()` releases
+        # ownership by clearing `_started`.
         transport = self._transport
         self._protocol = None
         self._transport = None
