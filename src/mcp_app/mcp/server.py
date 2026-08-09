@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from mcp_app.chess_service import ChessService
 from mcp_app.mcp.resources import register_widget_resource
@@ -21,6 +22,9 @@ def create_server(
         instructions=SERVER_INSTRUCTIONS,
         json_response=True,
         stateless_http=True,
+        transport_security=TransportSecuritySettings(
+            enable_dns_rebinding_protection=False,
+        ),
     )
     register_tools(mcp, service)
     register_widget_resource(mcp, widget_dir)

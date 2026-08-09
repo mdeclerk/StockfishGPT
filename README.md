@@ -50,6 +50,7 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
 - [Python](https://www.python.org/downloads/) & [uv](https://docs.astral.sh/uv/getting-started/installation/)
 - [Node.js](https://nodejs.org/en/download) & [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
 - [Stockfish](https://stockfishchess.org/download/)
+- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
 
 ### Build & Run
 
@@ -95,8 +96,19 @@ Run app and start the inspector `npx @modelcontextprotocol/inspector@latest` wit
 ### ChatGPT
 
 Full e2e experience on ChatGPT target:
-- Run app via `uv run mcp-app --wdir widget/dist`
-- Start public tunnel `docker compose up tunnel` using cloudflared
+
+- Run app via:
+
+  ```sh
+  uv run mcp-app --wdir widget/dist
+  ```
+
+- Start public tunnel 
+
+  ```sh
+  cloudflared tunnel --no-autoupdate --url http://localhost:8000
+  ```
+
 - Add app as ChatGPT Plugin as described in [Quick Start](#quick-start)
 
 ## Architecture

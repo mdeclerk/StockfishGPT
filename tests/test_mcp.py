@@ -47,6 +47,11 @@ def test_server_settings_and_instructions(tmp_path: Path) -> None:
     assert mcp.settings.stateless_http is True
     assert mcp.settings.json_response is True
     assert mcp.settings.streamable_http_path == "/mcp"
+    assert mcp.settings.transport_security is not None
+    assert (
+        mcp.settings.transport_security.enable_dns_rebinding_protection
+        is False
+    )
     assert mcp.instructions == SERVER_INSTRUCTIONS
     assert len(mcp.instructions) < 800
     assert "For any play/start request, immediately call `start_game`" in (
@@ -74,7 +79,18 @@ def test_server_settings_and_instructions(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_server_speaks_streamable_http_at_mcp(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    "base_url",
+    [
+        "http://127.0.0.1:8000",
+        "https://demo.trycloudflare.com",
+        "https://stockfish-gpt-abc123.a.run.app",
+    ],
+)
+async def test_server_speaks_streamable_http_at_mcp(
+    tmp_path: Path,
+    base_url: str,
+) -> None:
     mcp = make_server(tmp_path)
     transport = httpx.ASGITransport(app=mcp.streamable_http_app())
 
@@ -82,7 +98,7 @@ async def test_server_speaks_streamable_http_at_mcp(tmp_path: Path) -> None:
         mcp.session_manager.run(),
         httpx.AsyncClient(
             transport=transport,
-            base_url="http://127.0.0.1:8000",
+            base_url=base_url,
         ) as client,
     ):
         initialized = await client.post(
