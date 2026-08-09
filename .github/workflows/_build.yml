@@ -1,49 +1,16 @@
-name: CI
+name: Build
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
-  workflow_dispatch:
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  workflow_call:
+    inputs:
+      publish:
+        description: Push the tested images and publish a multi-platform manifest
+        type: boolean
+        required: false
+        default: false
 
 jobs:
-  backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - run: uv sync --frozen
-      - run: uv run ruff check .
-      - run: uv run pytest
-
-  frontend:
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: widget
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: npm
-          cache-dependency-path: widget/package-lock.json
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-
   container:
-    needs: [backend, frontend]
     strategy:
       matrix:
         include:
@@ -95,7 +62,7 @@ jobs:
             = "${{ matrix.architecture }}"
       - name: Log in to GHCR
         if: >-
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          inputs.publish &&
           github.ref_name == github.event.repository.default_branch
         uses: docker/login-action@v4
         with:
@@ -104,7 +71,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Push tested architecture image
         if: >-
-          (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+          inputs.publish &&
           github.ref_name == github.event.repository.default_branch
         run: |
           architecture_image="${CONTAINER_IMAGE}:sha-${GITHUB_SHA}-${{ matrix.architecture }}"
@@ -113,7 +80,7 @@ jobs:
 
   publish-container:
     if: >-
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      inputs.publish &&
       github.ref_name == github.event.repository.default_branch
     needs: container
     runs-on: ubuntu-24.04

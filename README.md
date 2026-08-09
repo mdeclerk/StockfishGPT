@@ -1,4 +1,4 @@
-[![CI](https://github.com/mdeclerk/StockfishGPT/actions/workflows/ci.yml/badge.svg)](https://github.com/mdeclerk/StockfishGPT/actions/workflows/ci.yml)
+[![CI](https://github.com/mdeclerk/StockfishGPT/actions/workflows/CI.yml/badge.svg)](https://github.com/mdeclerk/StockfishGPT/actions/workflows/CI.yml)
 
 # StockfishGPT
 
