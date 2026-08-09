@@ -1,12 +1,10 @@
 from pathlib import Path
 
-import httpx
 import pytest
 from fakes import RecordingEngine
-from starlette.applications import Starlette
 
 import mcp_app.main as main_module
-from mcp_app.main import _create_app, _parse_args, main
+from mcp_app.main import _parse_args, main
 
 
 def make_widget_dir(tmp_path: Path) -> Path:
@@ -21,32 +19,6 @@ def make_executable(tmp_path: Path) -> Path:
     executable.write_text("test")
     executable.chmod(0o755)
     return executable
-
-
-async def call_tool(
-    client: httpx.AsyncClient,
-    name: str,
-    arguments: dict[str, object],
-) -> httpx.Response:
-    return await client.post(
-        "/mcp",
-        headers={"Accept": "application/json, text/event-stream"},
-        json={
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": name, "arguments": arguments},
-        },
-    )
-
-
-def make_app(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    engine: RecordingEngine,
-) -> Starlette:
-    monkeypatch.setattr(main_module, "StockfishEngine", lambda _: engine)
-    return _create_app(make_widget_dir(tmp_path))
 
 
 def test_widget_argument_is_required_and_validated(tmp_path: Path) -> None:
@@ -125,99 +97,41 @@ def test_stockfish_argument_rejects_unusable_targets(
         )
 
 
-def test_create_app_constructs_engine_with_requested_executable(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    engine = RecordingEngine()
-    executable = make_executable(tmp_path)
-    calls: list[Path | None] = []
-
-    def fake_engine(stockfish: Path | None) -> RecordingEngine:
-        calls.append(stockfish)
-        return engine
-
-    monkeypatch.setattr(main_module, "StockfishEngine", fake_engine)
-
-    app = _create_app(make_widget_dir(tmp_path), executable)
-
-    assert isinstance(app, Starlette)
-    assert calls == [executable]
-
-
-@pytest.mark.asyncio
-async def test_health_tracks_service_liveness(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    engine = RecordingEngine()
-    app = make_app(monkeypatch, tmp_path, engine)
-
-    async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=app),
-        base_url="http://127.0.0.1:8000",
-    ) as client:
-        stopped = await client.get("/health")
-        await engine.start()
-        started = await client.get("/health")
-
-    assert stopped.status_code == 503
-    assert stopped.json() == {"status": "engine_unavailable"}
-    assert started.status_code == 200
-    assert started.json() == {"status": "ok"}
-
-
-@pytest.mark.asyncio
-async def test_one_service_lifespan_serves_every_request(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    engine = RecordingEngine()
-    app = make_app(monkeypatch, tmp_path, engine)
-
-    async with (
-        httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=app),
-            base_url="http://127.0.0.1:8000",
-        ) as client,
-        app.router.lifespan_context(app),
-    ):
-        assert engine.starts == 1
-        started = await call_tool(client, "start_game", {})
-        game_id = started.json()["result"]["structuredContent"]["game_id"]
-        responses = [
-            await call_tool(client, "get_game_state", {"game_id": game_id})
-            for _ in range(3)
-        ]
-        health = await client.get("/health")
-
-        assert all(response.status_code == 200 for response in responses)
-        assert health.json() == {"status": "ok"}
-        assert engine.starts == 1
-        assert engine.stops == 0
-
-    assert engine.starts == 1
-    assert engine.stops == 1
-
-
-def test_main_configures_and_runs_app(
+def test_main_configures_and_runs_server_lifecycle(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     calls: dict[str, object] = {}
+    engine = RecordingEngine()
     executable = make_executable(tmp_path)
     widget_dir = make_widget_dir(tmp_path)
-    app = object()
 
-    def fake_create_app(directory: Path, stockfish: Path | None) -> object:
-        calls.update(widget_dir=directory, stockfish=stockfish)
-        return app
+    class FakeServer:
+        async def run_streamable_http_async(self) -> None:
+            calls["runs"] = int(calls.get("runs", 0)) + 1
+            assert engine.running is True
 
-    def fake_run(asgi_app: object, *, host: str, port: int) -> None:
-        calls.update(asgi_app=asgi_app, host=host, port=port)
+    def fake_engine(stockfish: Path | None) -> RecordingEngine:
+        calls["stockfish"] = stockfish
+        return engine
 
-    monkeypatch.setattr(main_module, "_create_app", fake_create_app)
-    monkeypatch.setattr(main_module.uvicorn, "run", fake_run)
+    def fake_create_server(
+        service: object,
+        directory: Path,
+        *,
+        host: str,
+        port: int,
+    ) -> FakeServer:
+        calls.update(
+            service=service,
+            widget_dir=directory,
+            host=host,
+            port=port,
+        )
+        return FakeServer()
+
+    monkeypatch.setattr(main_module, "StockfishEngine", fake_engine)
+    monkeypatch.setattr(main_module, "create_server", fake_create_server)
 
     main(
         [
@@ -232,10 +146,42 @@ def test_main_configures_and_runs_app(
         ]
     )
 
+    service = calls.pop("service")
+
+    assert isinstance(service, main_module.ChessService)
     assert calls == {
-        "widget_dir": widget_dir,
         "stockfish": executable.resolve(),
-        "asgi_app": app,
+        "widget_dir": widget_dir,
         "host": "0.0.0.0",
         "port": 9000,
+        "runs": 1,
     }
+    assert engine.starts == 1
+    assert engine.stops == 1
+    assert engine.running is False
+
+
+def test_main_closes_service_when_server_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    engine = RecordingEngine()
+
+    class FailingServer:
+        async def run_streamable_http_async(self) -> None:
+            assert engine.running is True
+            raise RuntimeError("server failed")
+
+    monkeypatch.setattr(main_module, "StockfishEngine", lambda _: engine)
+    monkeypatch.setattr(
+        main_module,
+        "create_server",
+        lambda *_args, **_kwargs: FailingServer(),
+    )
+
+    with pytest.raises(RuntimeError, match="server failed"):
+        main(["--widget_dir", str(make_widget_dir(tmp_path))])
+
+    assert engine.starts == 1
+    assert engine.stops == 1
+    assert engine.running is False

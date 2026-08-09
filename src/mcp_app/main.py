@@ -1,15 +1,10 @@
 """StockfishGPT CLI entry point."""
 
 import argparse
+import asyncio
 import os
-from collections.abc import AsyncGenerator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import Sequence
 from pathlib import Path
-
-import uvicorn
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import JSONResponse
 
 from mcp_app.chess_service import ChessService
 from mcp_app.mcp import WIDGET_FILENAME, create_server
@@ -77,38 +72,23 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _create_app(widget_dir: Path, stockfish_path: Path | None = None) -> Starlette:
-    """Create the StockfishGPT ASGI application and its dependencies."""
-    engine = StockfishEngine(stockfish_path)
-    service = ChessService(engine)
-    mcp = create_server(service, widget_dir)
-    app = mcp.streamable_http_app()
-
-    async def health(_: Request) -> JSONResponse:
-        if not service.is_alive:
-            return JSONResponse({"status": "engine_unavailable"}, status_code=503)
-        return JSONResponse({"status": "ok"})
-
-    app.router.add_route(
-        "/health", health, methods=["GET"], include_in_schema=False
-    )
-    sessions = app.router.lifespan_context
-
-    @asynccontextmanager
-    async def lifespan(scoped: Starlette) -> AsyncGenerator[None]:
-        await service.start()
-        try:
-            async with sessions(scoped):
-                yield
-        finally:
-            await service.close()
-
-    app.router.lifespan_context = lifespan
-    return app
-
-
 def main(argv: Sequence[str] | None = None) -> None:
     """Run Streamable HTTP at `/mcp`."""
     args = _parse_args(argv)
-    app = _create_app(args.widget_dir, args.stockfish_path)
-    uvicorn.run(app, host=args.host, port=args.port)
+    engine = StockfishEngine(args.stockfish_path)
+    service = ChessService(engine)
+    mcp = create_server(
+        service,
+        args.widget_dir,
+        host=args.host,
+        port=args.port,
+    )
+
+    async def run_async() -> None:
+        await service.start()
+        try:
+            await mcp.run_streamable_http_async()
+        finally:
+            await service.close()
+
+    asyncio.run(run_async())

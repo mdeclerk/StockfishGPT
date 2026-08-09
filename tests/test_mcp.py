@@ -2,7 +2,7 @@ from pathlib import Path
 
 import httpx
 import pytest
-from fakes import FirstMoveEngine
+from fakes import FirstMoveEngine, RecordingEngine
 from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import LATEST_PROTOCOL_VERSION
 
@@ -26,9 +26,18 @@ def make_widget_dir(
     return directory
 
 
-def make_server(tmp_path: Path, engine: FirstMoveEngine | None = None):
+def make_server(
+    tmp_path: Path,
+    engine: FirstMoveEngine | None = None,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+):
     return create_server(
-        ChessService(engine or FirstMoveEngine()), make_widget_dir(tmp_path)
+        ChessService(engine or FirstMoveEngine()),
+        make_widget_dir(tmp_path),
+        host=host,
+        port=port,
     )
 
 
@@ -47,6 +56,8 @@ def test_server_settings_and_instructions(tmp_path: Path) -> None:
     assert mcp.settings.stateless_http is True
     assert mcp.settings.json_response is True
     assert mcp.settings.streamable_http_path == "/mcp"
+    assert mcp.settings.host == "127.0.0.1"
+    assert mcp.settings.port == 8000
     assert mcp.settings.transport_security is not None
     assert (
         mcp.settings.transport_security.enable_dns_rebinding_protection
@@ -76,6 +87,38 @@ def test_server_settings_and_instructions(tmp_path: Path) -> None:
         in mcp.instructions
     )
     assert "direct those requests to its controls" in mcp.instructions
+
+
+def test_server_accepts_network_overrides(tmp_path: Path) -> None:
+    mcp = make_server(tmp_path, host="0.0.0.0", port=9000)
+
+    assert mcp.settings.host == "0.0.0.0"
+    assert mcp.settings.port == 9000
+    assert mcp.settings.transport_security is not None
+    assert (
+        mcp.settings.transport_security.enable_dns_rebinding_protection
+        is False
+    )
+
+
+@pytest.mark.asyncio
+async def test_health_tracks_service_liveness(tmp_path: Path) -> None:
+    engine = RecordingEngine()
+    mcp = make_server(tmp_path, engine)
+    transport = httpx.ASGITransport(app=mcp.streamable_http_app())
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://127.0.0.1:8000",
+    ) as client:
+        stopped = await client.get("/health")
+        await engine.start()
+        started = await client.get("/health")
+
+    assert stopped.status_code == 503
+    assert stopped.json() == {"status": "engine_unavailable"}
+    assert started.status_code == 200
+    assert started.json() == {"status": "ok"}
 
 
 @pytest.mark.asyncio
