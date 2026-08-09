@@ -20,7 +20,9 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
 
 1. **Install [Docker](https://docs.docker.com/get-docker/).**
 
-2. **Start MCP App & Public HTTPS Tunnel.** Spin up MCP-App and cloudflared container:
+2. **Start MCP App & Public HTTPS Tunnel:** 
+   
+   Spin up MCP-App and cloudflared container:
 
    ```sh
    docker compose up
@@ -32,7 +34,9 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
    docker compose logs tunnel | grep trycloudflare
    ```
 
-3. **Add MCP App in [ChatGPT](https://www.chatgpt.com).** Activate [Developer Mode](https://developers.openai.com/plugins/deploy/connect-chatgpt) (Settings → Security and login → Developer mode), then add a new plugin:
+3. **Add MCP App in [ChatGPT](https://www.chatgpt.com):** 
+
+   Activate [Developer Mode](https://developers.openai.com/plugins/deploy/connect-chatgpt) (Settings → Security and login → Developer mode), then add a new plugin:
    - Name: `StockfishGPT`
    - URL: url from step 2 — don't forget to append `/mcp`!
    - No Auth
