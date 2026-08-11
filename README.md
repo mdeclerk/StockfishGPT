@@ -67,32 +67,12 @@ uv sync
 uv run mcp-app
 ```
 
-### Configuration
-
-Runtime configuration can be supplied through environment variables or CLI
-options. CLI options take precedence over environment variables, which take
-precedence over the local defaults.
-
-The app does not load `.env` files. For local overrides, export a variable in
-the shell or pass the corresponding CLI option.
-
 | Environment | CLI override | Default |
 | --- | --- | --- |
 | `HOST` | `--host` | `127.0.0.1` |
 | `PORT` | `--port` | `8000` |
 | `WIDGET_DIR` | `--widget-dir`, `--wdir` | `widget/dist` |
 | `STOCKFISH_PATH` | `--stockfish-path` | Resolve from `PATH` |
-
-For example, both of these run the app on port 9000:
-
-```sh
-PORT=9000 uv run mcp-app
-uv run mcp-app --port 9000
-```
-
-The container image supplies `HOST=0.0.0.0` and `WIDGET_DIR=/app/widget`.
-Cloud Run supplies `PORT` automatically; do not set that reserved variable in
-the Cloud Run service configuration.
 
 ### Tests
 
