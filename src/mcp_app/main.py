@@ -1,87 +1,98 @@
 """StockfishGPT CLI entry point."""
 
-import argparse
 import asyncio
 import os
+import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+from pydantic import Field, ValidationError, field_validator
+from pydantic_settings import BaseSettings, CliApp, SettingsConfigDict
 
 from mcp_app.chess_service import ChessService
 from mcp_app.mcp import WIDGET_FILENAME, create_server
 from mcp_app.stockfish import StockfishEngine
 
-DEFAULT_HOST = "127.0.0.1"
-DEFAULT_PORT = 8000
 
+class Settings(BaseSettings):
+    """Run the StockfishGPT MCP app."""
 
-def _widget_directory(value: str) -> Path:
-    """Validate a widget build directory."""
-    directory = Path(value)
-    if not directory.is_dir():
-        raise argparse.ArgumentTypeError(f"{value} is not a directory")
-    if not (directory / WIDGET_FILENAME).is_file():
-        raise argparse.ArgumentTypeError(f"{value} does not contain {WIDGET_FILENAME}")
-    return directory
-
-
-def _stockfish_executable(value: str) -> Path:
-    """Validate an explicit Stockfish executable."""
-    executable = Path(value).expanduser().resolve()
-    if not executable.is_file():
-        raise argparse.ArgumentTypeError(f"{value} is not a file")
-    if not os.access(executable, os.X_OK):
-        raise argparse.ArgumentTypeError(f"{value} is not executable")
-    return executable
-
-
-def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
-    """Parse CLI arguments."""
-    parser = argparse.ArgumentParser(
-        prog="mcp-app",
-        description="Run the StockfishGPT MCP app.",
-    )
-    parser.add_argument(
-        "--widget_dir",
-        "--wdir",
-        dest="widget_dir",
-        required=True,
-        type=_widget_directory,
-        metavar="DIR",
-        help=(
+    widget_dir: Path = Field(
+        default=Path("widget/dist"),
+        description=(
             "Vite build output directory containing "
             f"{WIDGET_FILENAME} (for example `widget/dist`)"
         ),
     )
-    parser.add_argument(
-        "--stockfish_path",
-        type=_stockfish_executable,
-        metavar="FILE",
-        help="Path to the Stockfish executable (default: resolve from PATH)",
+    stockfish_path: Path | None = Field(
+        default=None,
+        description="Path to the Stockfish executable (default: resolve from PATH)",
     )
-    parser.add_argument(
-        "--host",
-        default=DEFAULT_HOST,
-        help="Host interface to bind (default: %(default)s)",
+    host: str = Field(
+        default="127.0.0.1",
+        description="Host interface to bind",
     )
-    parser.add_argument(
-        "--port",
-        type=int,
-        default=DEFAULT_PORT,
-        help="Port to bind (default: %(default)s)",
+    port: int = Field(
+        default=8000,
+        ge=1,
+        le=65535,
+        description="Port to bind",
     )
-    return parser.parse_args(argv)
+
+    model_config = SettingsConfigDict(
+        cli_kebab_case=True,
+        cli_prog_name="mcp-app",
+        cli_shortcuts={"widget-dir": "wdir"},
+        cli_show_env_vars=True,
+        env_file=None,
+        extra="ignore",
+    )
+
+    @field_validator("widget_dir")
+    @classmethod
+    def validate_widget_directory(cls, directory: Path) -> Path:
+        """Validate a widget build directory."""
+        if not directory.is_dir():
+            raise ValueError(f"{directory} is not a directory")
+        if not (directory / WIDGET_FILENAME).is_file():
+            raise ValueError(f"{directory} does not contain {WIDGET_FILENAME}")
+        return directory
+
+    @field_validator("stockfish_path")
+    @classmethod
+    def validate_stockfish_executable(cls, executable: Path | None) -> Path | None:
+        """Validate an explicit Stockfish executable."""
+        if executable is None:
+            return None
+        supplied_path = executable
+        executable = executable.expanduser().resolve()
+        if not executable.is_file():
+            raise ValueError(f"{supplied_path} is not a file")
+        if not os.access(executable, os.X_OK):
+            raise ValueError(f"{supplied_path} is not executable")
+        return executable
+
+
+def _load_settings(argv: Sequence[str] | None = None) -> Settings:
+    """Load and validate settings from CLI arguments and the environment."""
+    cli_args = list(argv) if argv is not None else None
+    try:
+        return CliApp.run(Settings, cli_args=cli_args)
+    except ValidationError as error:
+        print(f"mcp-app: configuration error:\n{error}", file=sys.stderr)
+        raise SystemExit(2) from None
 
 
 def main(argv: Sequence[str] | None = None) -> None:
     """Run Streamable HTTP at `/mcp`."""
-    args = _parse_args(argv)
-    engine = StockfishEngine(args.stockfish_path)
+    settings = _load_settings(argv)
+    engine = StockfishEngine(settings.stockfish_path)
     service = ChessService(engine)
     mcp = create_server(
         service,
-        args.widget_dir,
-        host=args.host,
-        port=args.port,
+        settings.widget_dir,
+        host=settings.host,
+        port=settings.port,
     )
 
     async def run_async() -> None:

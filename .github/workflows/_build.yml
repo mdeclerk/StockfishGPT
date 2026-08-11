@@ -38,10 +38,23 @@ jobs:
             .
       - name: Smoke test image and packaged application
         run: |
-          container_id=$(docker run --detach --publish 8000:8000 stockfish-gpt:test)
+          test_port=18000
+          container_id=$(docker run --detach \
+            --env "PORT=$test_port" \
+            --publish "$test_port:$test_port" \
+            --health-interval 1s \
+            --health-start-period 0s \
+            stockfish-gpt:test)
           trap 'docker rm --force "$container_id"' EXIT
           curl --fail --retry 10 --retry-delay 2 --retry-all-errors \
-            http://127.0.0.1:8000/health
+            "http://127.0.0.1:$test_port/health"
+          for _ in $(seq 1 20); do
+            health_status=$(docker inspect \
+              --format '{{.State.Health.Status}}' "$container_id")
+            test "$health_status" = "healthy" && break
+            sleep 1
+          done
+          test "$health_status" = "healthy"
           docker exec "$container_id" python -c \
             "from pathlib import Path; from mcp_app.main import WIDGET_FILENAME; assert (Path('/app/widget') / WIDGET_FILENAME).read_text().startswith('<!doctype html>')"
           printf 'uci\nquit\n' | docker exec --interactive "$container_id" stockfish \
@@ -115,11 +128,23 @@ jobs:
           grep '"architecture": "amd64"' /tmp/stockfish-gpt-manifest.txt
           grep '"architecture": "arm64"' /tmp/stockfish-gpt-manifest.txt
           docker pull "${CONTAINER_IMAGE}:sha-${GITHUB_SHA}"
-          container_id=$(docker run --detach --publish 8000:8000 \
+          test_port=18000
+          container_id=$(docker run --detach \
+            --env "PORT=$test_port" \
+            --publish "$test_port:$test_port" \
+            --health-interval 1s \
+            --health-start-period 0s \
             "${CONTAINER_IMAGE}:sha-${GITHUB_SHA}")
           trap 'docker rm --force "$container_id"' EXIT
           curl --fail --retry 10 --retry-delay 2 --retry-all-errors \
-            http://127.0.0.1:8000/health
+            "http://127.0.0.1:$test_port/health"
+          for _ in $(seq 1 20); do
+            health_status=$(docker inspect \
+              --format '{{.State.Health.Status}}' "$container_id")
+            test "$health_status" = "healthy" && break
+            sleep 1
+          done
+          test "$health_status" = "healthy"
           docker exec "$container_id" python -c \
             "from pathlib import Path; from mcp_app.main import WIDGET_FILENAME; assert (Path('/app/widget') / WIDGET_FILENAME).read_text().startswith('<!doctype html>')"
           printf 'uci\nquit\n' | docker exec --interactive "$container_id" stockfish \
