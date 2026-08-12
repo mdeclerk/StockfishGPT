@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 import chess
 import chess.engine
 
-from mcp_app.chess_service.errors import (
+from mcp_app.service.errors import (
     GameNotFoundError,
     GameVersionError,
     InvalidMoveError,
@@ -19,7 +19,7 @@ from mcp_app.chess_service.errors import (
     NotPlayersTurnError,
     TerminalPositionError,
 )
-from mcp_app.chess_service.models import (
+from mcp_app.service.models import (
     Difficulty,
     Evaluation,
     GameState,

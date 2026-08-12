@@ -7,9 +7,9 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from mcp_app.chess_service import ChessService
 from mcp_app.mcp.resources import register_widget_resource
 from mcp_app.mcp.tools import register_tools
+from mcp_app.service import ChessService
 
 SERVER_INSTRUCTIONS = Path(__file__).with_name("instructions.md").read_text().strip()
 

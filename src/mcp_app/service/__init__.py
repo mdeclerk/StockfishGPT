@@ -1,6 +1,6 @@
 """Server-owned chess application service."""
 
-from mcp_app.chess_service.models import (
+from mcp_app.service.models import (
     Difficulty,
     Evaluation,
     GameState,
@@ -11,7 +11,7 @@ from mcp_app.chess_service.models import (
     VariationMove,
     WinDrawLoss,
 )
-from mcp_app.chess_service.service import ChessService
+from mcp_app.service.service import ChessService
 
 __all__ = [
     "ChessService",

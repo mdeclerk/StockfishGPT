@@ -149,7 +149,7 @@ The server owns each game and returns complete authoritative snapshots. The widg
 ├── .github/workflows/    # GitHub CI
 ├── src/mcp_app/
 │   ├── mcp/              # FastMCP tools, resources, and wire schemas
-│   ├── chess_service/    # Server-owned games, chess behavior, and domain models
+│   ├── service/          # Server-owned games, chess behavior, and domain models
 │   ├── stockfish/        # Raw UCI process adapter
 │   └── main.py           # CLI, composition, and process lifecycle
 ├── widget/               # React chess widget

@@ -10,7 +10,7 @@ from pydantic import (
     model_validator,
 )
 
-from mcp_app.chess_service import (
+from mcp_app.service import (
     Difficulty,
     GameState,
     GameStatus,

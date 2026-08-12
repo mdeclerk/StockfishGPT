@@ -7,7 +7,7 @@ from typing import Any, Self
 import chess
 import chess.engine
 
-from mcp_app.chess_service.errors import InvalidAnalysisError
+from mcp_app.service.errors import InvalidAnalysisError
 
 _MAXIMUM_VARIATION_PLIES = 6
 

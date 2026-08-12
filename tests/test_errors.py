@@ -1,6 +1,6 @@
 import pytest
 
-from mcp_app.chess_service.errors import (
+from mcp_app.service.errors import (
     ChessServiceError,
     GameNotFoundError,
     GameVersionError,

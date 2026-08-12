@@ -5,14 +5,14 @@ import chess.engine
 import pytest
 from pydantic import ValidationError
 
-from mcp_app.chess_service.errors import InvalidAnalysisError
-from mcp_app.chess_service.models import (
+from mcp_app.mcp.schemas import MoveSchema, WinDrawLossSchema
+from mcp_app.service.errors import InvalidAnalysisError
+from mcp_app.service.models import (
     Evaluation,
     Move,
     Side,
     WinDrawLoss,
 )
-from mcp_app.mcp.schemas import MoveSchema, WinDrawLossSchema
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 AFTER_E4_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"

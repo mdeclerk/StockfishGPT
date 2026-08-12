@@ -10,8 +10,8 @@ import chess.engine
 import pytest
 
 import mcp_app.stockfish.engine as engine_module
-from mcp_app.chess_service.models import Difficulty
-from mcp_app.chess_service.service import ChessService
+from mcp_app.service.models import Difficulty
+from mcp_app.service.service import ChessService
 from mcp_app.stockfish.engine import StockfishEngine
 from mcp_app.stockfish.errors import (
     EngineNotFoundError,

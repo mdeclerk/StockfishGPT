@@ -5,15 +5,15 @@ import chess.engine
 import pytest
 from fakes import FirstMoveEngine, RecordingEngine, candidate_info
 
-import mcp_app.chess_service.service as service_module
-from mcp_app.chess_service.errors import (
+import mcp_app.service.service as service_module
+from mcp_app.service.errors import (
     GameNotFoundError,
     GameVersionError,
     InvalidMoveError,
     NothingToUndoError,
 )
-from mcp_app.chess_service.models import Difficulty, GameStatus
-from mcp_app.chess_service.service import ChessService, _Engine
+from mcp_app.service.models import Difficulty, GameStatus
+from mcp_app.service.service import ChessService, _Engine
 
 
 class RankedEngine(FirstMoveEngine):

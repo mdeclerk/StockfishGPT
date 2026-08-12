@@ -6,7 +6,6 @@ from fakes import FirstMoveEngine, RecordingEngine
 from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import LATEST_PROTOCOL_VERSION
 
-from mcp_app.chess_service.service import ChessService
 from mcp_app.mcp.resources import (
     WIDGET_META,
     WIDGET_MIME_TYPE,
@@ -14,6 +13,7 @@ from mcp_app.mcp.resources import (
     read_widget,
 )
 from mcp_app.mcp.server import SERVER_INSTRUCTIONS, create_server
+from mcp_app.service.service import ChessService
 
 
 def make_widget_dir(
