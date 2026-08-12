@@ -7,7 +7,7 @@ from typing import Any, Self
 import chess
 import chess.engine
 
-from mcp_app.service.errors import InvalidAnalysisError
+from .errors import InvalidAnalysisError
 
 _MAXIMUM_VARIATION_PLIES = 6
 
@@ -40,6 +40,14 @@ class GameStatus(StrEnum):
     DRAW_INSUFFICIENT_MATERIAL = "draw_insufficient_material"
     DRAW_FIFTY_MOVE_RULE = "draw_fifty_move_rule"
     DRAW_THREEFOLD_REPETITION = "draw_threefold_repetition"
+
+
+class ServiceStatus(StrEnum):
+    """Readiness of the service and its required dependencies."""
+
+    OK = "ok"
+    ENGINE_UNAVAILABLE = "engine_unavailable"
+    STORE_UNAVAILABLE = "store_unavailable"
 
 
 @dataclass(frozen=True, slots=True)

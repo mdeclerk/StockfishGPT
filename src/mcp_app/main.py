@@ -7,12 +7,13 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Self
 
-from pydantic import Field, ValidationError, field_validator
+from pydantic import Field, RedisDsn, ValidationError, field_validator
 from pydantic_settings import BaseSettings, CliApp, SettingsConfigDict
 
-from mcp_app.engine import StockfishEngine
-from mcp_app.mcp import WIDGET_FILENAME, create_server
-from mcp_app.service import ChessService
+from .engine import StockfishEngine
+from .mcp import WIDGET_FILENAME, create_server
+from .service import ChessService
+from .store import LocalGameStore, RedisGameStore
 
 
 class Settings(BaseSettings):
@@ -28,6 +29,10 @@ class Settings(BaseSettings):
     stockfish_path: Path | None = Field(
         default=None,
         description="Path to the Stockfish executable (default: resolve from PATH)",
+    )
+    redis_url: RedisDsn | None = Field(
+        default=None,
+        description="Redis URL for shared game storage (default: local memory)",
     )
     host: str = Field(
         default="127.0.0.1",
@@ -88,7 +93,12 @@ def main(argv: Sequence[str] | None = None) -> None:
     """Run Streamable HTTP at `/mcp`."""
     settings = Settings.from_args(argv)
     engine = StockfishEngine(settings.stockfish_path)
-    service = ChessService(engine)
+    store = (
+        RedisGameStore.from_url(str(settings.redis_url))
+        if settings.redis_url is not None
+        else LocalGameStore()
+    )
+    service = ChessService(engine, store)
     mcp = create_server(
         service,
         settings.widget_dir,
@@ -97,7 +107,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
 
     async def run_async() -> None:
-        async with engine:
+        async with store, engine:
             await mcp.run_streamable_http_async()
 
     asyncio.run(run_async())

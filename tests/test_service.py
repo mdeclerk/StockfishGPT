@@ -5,15 +5,34 @@ import chess.engine
 import pytest
 from fakes import FirstMoveEngine, RecordingEngine, candidate_info
 
-import mcp_app.service.service as service_module
+from mcp_app.engine import Engine
 from mcp_app.service.errors import (
     GameNotFoundError,
     GameVersionError,
     InvalidMoveError,
     NothingToUndoError,
 )
-from mcp_app.service.models import Difficulty, GameStatus
-from mcp_app.service.service import ChessService, _Engine
+from mcp_app.service.models import Difficulty, GameStatus, ServiceStatus
+from mcp_app.service.service import ChessService
+from mcp_app.store import LocalGameStore
+from mcp_app.store.errors import StoreDataError
+from mcp_app.store.local import DEFAULT_GAME_TTL_SECONDS
+from mcp_app.store.models import GameRecord
+
+
+def make_service(engine: Engine) -> ChessService:
+    return ChessService(engine, LocalGameStore())
+
+
+class ManualClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
 
 
 class RankedEngine(FirstMoveEngine):
@@ -95,23 +114,23 @@ class LineEngine(FirstMoveEngine):
 
 
 def test_analysis_engine_satisfies_the_service_protocol() -> None:
-    assert isinstance(FirstMoveEngine(), _Engine)
+    assert isinstance(FirstMoveEngine(), Engine)
 
 
 @pytest.mark.asyncio
 async def test_service_reports_engine_liveness() -> None:
     engine = RecordingEngine()
-    service = ChessService(engine)
+    service = make_service(engine)
 
-    assert service.is_alive is False
+    assert await service.health_status() is ServiceStatus.ENGINE_UNAVAILABLE
     async with engine:
-        assert service.is_alive is True
-    assert service.is_alive is False
+        assert await service.health_status() is ServiceStatus.OK
+    assert await service.health_status() is ServiceStatus.ENGINE_UNAVAILABLE
 
 
 @pytest.mark.asyncio
 async def test_start_and_reset_return_complete_authoritative_state() -> None:
-    service = ChessService(FirstMoveEngine())
+    service = make_service(FirstMoveEngine())
 
     started = await service.start_game(Difficulty.BEGINNER)
     reset = await service.reset_game(
@@ -131,6 +150,39 @@ async def test_start_and_reset_return_complete_authoritative_state() -> None:
 
 
 @pytest.mark.asyncio
+async def test_start_retries_an_atomic_game_id_collision() -> None:
+    class OnceCollidingStore(LocalGameStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.create_calls = 0
+
+        async def create(self, record: GameRecord) -> bool:
+            self.create_calls += 1
+            if self.create_calls == 1:
+                return False
+            return await super().create(record)
+
+    store = OnceCollidingStore()
+    service = ChessService(FirstMoveEngine(), store)
+
+    game = await service.start_game()
+
+    assert game.game_id
+    assert store.create_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_invalid_persisted_domain_values_are_typed_store_errors() -> None:
+    store = LocalGameStore()
+    service = ChessService(FirstMoveEngine(), store)
+    record = GameRecord("broken", 0, "impossible", (), (None,))
+    assert await store.create(record)
+
+    with pytest.raises(StoreDataError, match="difficulty"):
+        await service.get_game_state(record.game_id)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("difficulty", "candidate_count"),
     [
@@ -144,7 +196,7 @@ async def test_play_white_move_applies_white_and_one_engine_reply(
     candidate_count: int,
 ) -> None:
     engine = RankedEngine()
-    service = ChessService(engine)
+    service = make_service(engine)
     started = await service.start_game(difficulty)
 
     played = await service.play_white_move(started.game_id, 0, "e2e4")
@@ -162,7 +214,7 @@ async def test_play_white_move_applies_white_and_one_engine_reply(
 @pytest.mark.asyncio
 async def test_white_terminal_move_skips_an_extra_analysis() -> None:
     engine = ScholarMateEngine()
-    service = ChessService(engine)
+    service = make_service(engine)
     game = await service.start_game(Difficulty.STRONG)
     for move in ("e2e4", "d1h5", "f1c4", "h5f7"):
         game = await service.play_white_move(game.game_id, game.version, move)
@@ -174,7 +226,7 @@ async def test_white_terminal_move_skips_an_extra_analysis() -> None:
 
 @pytest.mark.asyncio
 async def test_engine_failure_leaves_white_move_uncommitted() -> None:
-    service = ChessService(FailingEngine())
+    service = make_service(FailingEngine())
     started = await service.start_game()
 
     with pytest.raises(RuntimeError, match="engine failed"):
@@ -187,7 +239,7 @@ async def test_engine_failure_leaves_white_move_uncommitted() -> None:
 
 @pytest.mark.asyncio
 async def test_undo_white_move_removes_a_full_turn_and_restores_outlook() -> None:
-    service = ChessService(FirstMoveEngine())
+    service = make_service(FirstMoveEngine())
     game = await service.start_game()
     first = await service.play_white_move(game.game_id, 0, "e2e4")
     first_outlook = first.outlook
@@ -205,7 +257,7 @@ async def test_undo_white_move_removes_a_full_turn_and_restores_outlook() -> Non
 async def test_analysis_returns_current_state_and_black_reply_without_mutating(
 ) -> None:
     engine = LineEngine()
-    service = ChessService(engine)
+    service = make_service(engine)
     game = await service.start_game()
 
     analysis = await service.analyze_position(game.game_id)
@@ -223,7 +275,7 @@ async def test_analysis_returns_current_state_and_black_reply_without_mutating(
 
 @pytest.mark.asyncio
 async def test_full_history_detects_threefold_repetition() -> None:
-    service = ChessService(RepetitionEngine())
+    service = make_service(RepetitionEngine())
     game = await service.start_game(Difficulty.STRONG)
     for move in ("g1f3", "f3g1", "g1f3", "f3g1"):
         game = await service.play_white_move(game.game_id, game.version, move)
@@ -241,7 +293,7 @@ def test_status_detects_fifty_move_rule() -> None:
 @pytest.mark.asyncio
 async def test_stale_or_duplicate_concurrent_mutations_only_commit_once() -> None:
     engine = FirstMoveEngine()
-    service = ChessService(engine)
+    service = make_service(engine)
     game = await service.start_game()
 
     results = await asyncio.gather(
@@ -257,7 +309,7 @@ async def test_stale_or_duplicate_concurrent_mutations_only_commit_once() -> Non
 
 @pytest.mark.asyncio
 async def test_invalid_identity_move_version_and_empty_undo_are_rejected() -> None:
-    service = ChessService(FirstMoveEngine())
+    service = make_service(FirstMoveEngine())
     game = await service.start_game()
 
     with pytest.raises(GameNotFoundError, match="not found"):
@@ -272,43 +324,47 @@ async def test_invalid_identity_move_version_and_empty_undo_are_rejected() -> No
 
 @pytest.mark.asyncio
 async def test_expired_game_is_evicted_on_access() -> None:
-    service = ChessService(FirstMoveEngine())
+    clock = ManualClock()
+    store = LocalGameStore(clock=clock)
+    service = ChessService(FirstMoveEngine(), store)
     game = await service.start_game()
 
-    service._games[game.game_id].last_access -= service_module._GAME_TTL_SECONDS + 1
+    clock.advance(DEFAULT_GAME_TTL_SECONDS + 1)
 
     with pytest.raises(GameNotFoundError, match="not found"):
         await service.get_game_state(game.game_id)
-    assert game.game_id not in service._games
 
 
 @pytest.mark.asyncio
 async def test_start_game_sweeps_expired_games() -> None:
-    service = ChessService(FirstMoveEngine())
+    clock = ManualClock()
+    store = LocalGameStore(clock=clock)
+    service = ChessService(FirstMoveEngine(), store)
     stale = await service.start_game()
+    clock.advance(1)
     fresh = await service.start_game()
 
-    service._games[stale.game_id].last_access -= (
-        service_module._GAME_TTL_SECONDS + 1
-    )
-    await service.start_game()
+    clock.advance(DEFAULT_GAME_TTL_SECONDS)
+    replacement = await service.start_game()
 
-    assert stale.game_id not in service._games
-    assert fresh.game_id in service._games
+    with pytest.raises(GameNotFoundError):
+        await service.get_game_state(stale.game_id)
+    assert await service.get_game_state(fresh.game_id) == fresh
+    assert await service.get_game_state(replacement.game_id) == replacement
 
 
 @pytest.mark.asyncio
 async def test_start_game_evicts_least_recently_used_game_at_cap(
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(service_module, "_MAX_GAMES", 2)
-    service = ChessService(FirstMoveEngine())
+    store = LocalGameStore(max_games=2)
+    service = ChessService(FirstMoveEngine(), store)
     oldest = await service.start_game()
     newest = await service.start_game()
 
     await service.get_game_state(newest.game_id)
     replacement = await service.start_game()
 
-    assert oldest.game_id not in service._games
-    assert newest.game_id in service._games
-    assert replacement.game_id in service._games
+    with pytest.raises(GameNotFoundError):
+        await service.get_game_state(oldest.game_id)
+    assert await service.get_game_state(newest.game_id) == newest
+    assert await service.get_game_state(replacement.game_id) == replacement

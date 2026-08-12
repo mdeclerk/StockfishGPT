@@ -8,6 +8,7 @@
 [![Starlette](https://img.shields.io/badge/Starlette-261B4C)](https://www.starlette.io)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
+[![Redis](https://img.shields.io/badge/Redis-FF4438?logo=redis&logoColor=white)](https://redis.io)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com)
 
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
@@ -20,7 +21,7 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
 
 1. **Install [Docker](https://docs.docker.com/get-docker/).**
 
-2. **Start MCP App & Public HTTPS Tunnel:** 
+2. **Start Redis, MCP App & Public HTTPS Tunnel:**
    
    Spin up MCP-App and cloudflared container:
 
@@ -73,6 +74,7 @@ uv run mcp-app
 | `PORT` | `--port` | `8000` |
 | `WIDGET_DIR` | `--widget-dir`, `--wdir` | `widget/dist` |
 | `STOCKFISH_PATH` | `--stockfish-path` | Resolve from `PATH` |
+| `REDIS_URL` | `--redis-url` | Local in-memory storage |
 
 ### Tests
 
@@ -87,6 +89,13 @@ Backend:
 ```sh
 uv run ruff check .
 uv run pytest
+```
+
+Redis adapter tests use FakeRedis by default. To include the real Redis
+integration suite, provide a disposable database:
+
+```sh
+TEST_REDIS_URL=redis://localhost:6379/15 uv run pytest
 ```
 
 ### Frontend dev server
@@ -124,7 +133,7 @@ Full e2e experience on ChatGPT target:
 
 ## Architecture
 
-The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`), while the long-lived chess service keeps games in memory for the server process lifetime.
+The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`). The chess service uses an injected game store: local memory when `REDIS_URL` is unset, or Redis for durable state shared safely across app replicas.
 
 > ⚠️ `ui/update-model-context` cannot currently be applied reliably due to [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
 
@@ -148,14 +157,15 @@ The server owns each game and returns complete authoritative snapshots. The widg
 .
 ├── .github/workflows/    # GitHub CI
 ├── src/mcp_app/
-│   ├── mcp/              # FastMCP tools, resources, and wire schemas
-│   ├── service/          # Server-owned games, chess behavior, and domain models
-│   ├── engine/           # Stockfish engine and errors
-│   └── main.py           # CLI, composition, and process lifecycle
+│   ├── mcp/              # FastMCP and wire schemas
+│   ├── service/          # Chess service and domain models
+│   ├── engine/           # Stockfish engine
+│   ├── store/            # Local in-memory and Redis game store
+│   └── main.py           # Configuration, composition root, CLI
 ├── widget/               # React chess widget
 ├── tests/                # Backend test suite
 ├── Dockerfile            # Production container image
-├── docker-compose.yml    # Container and tunnel setup
+├── docker-compose.yml    # Redis, application, and tunnel setup
 └── pyproject.toml        # Python project and tooling config
 ```
 

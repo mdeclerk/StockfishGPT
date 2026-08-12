@@ -6,6 +6,7 @@ Runtime dependencies include:
 
 - `chess` / python-chess — GPL-3.0-or-later.
 - MCP Python SDK — MIT.
+- redis-py — MIT.
 - React and React DOM — MIT.
 - MCP Apps SDK — MIT.
 - chess.js — BSD-2-Clause.

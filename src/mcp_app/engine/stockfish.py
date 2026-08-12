@@ -11,7 +11,7 @@ from typing import Protocol, Self, TypeVar
 import chess
 import chess.engine
 
-from mcp_app.engine.errors import (
+from .errors import (
     EngineBrokenError,
     EngineError,
     EngineNotFoundError,

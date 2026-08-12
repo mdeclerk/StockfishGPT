@@ -14,6 +14,7 @@ from mcp_app.mcp.resources import (
 )
 from mcp_app.mcp.server import SERVER_INSTRUCTIONS, create_server
 from mcp_app.service.service import ChessService
+from mcp_app.store import GameStore, LocalGameStore
 
 
 def make_widget_dir(
@@ -30,11 +31,15 @@ def make_server(
     tmp_path: Path,
     engine: FirstMoveEngine | None = None,
     *,
+    store: GameStore | None = None,
     host: str = "127.0.0.1",
     port: int = 8000,
 ):
     return create_server(
-        ChessService(engine or FirstMoveEngine()),
+        ChessService(
+            engine or FirstMoveEngine(),
+            store if store is not None else LocalGameStore(),
+        ),
         make_widget_dir(tmp_path),
         host=host,
         port=port,
@@ -119,6 +124,27 @@ async def test_health_tracks_service_liveness(tmp_path: Path) -> None:
     assert stopped.json() == {"status": "engine_unavailable"}
     assert started.status_code == 200
     assert started.json() == {"status": "ok"}
+
+
+@pytest.mark.asyncio
+async def test_health_reports_store_unavailability(tmp_path: Path) -> None:
+    class UnreadyStore(LocalGameStore):
+        async def is_ready(self) -> bool:
+            return False
+
+    engine = RecordingEngine()
+    mcp = make_server(tmp_path, engine, store=UnreadyStore())
+    transport = httpx.ASGITransport(app=mcp.streamable_http_app())
+
+    async with httpx.AsyncClient(
+        transport=transport,
+        base_url="http://127.0.0.1:8000",
+    ) as client:
+        await engine.start()
+        response = await client.get("/health")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "store_unavailable"}
 
 
 @pytest.mark.asyncio
@@ -332,6 +358,19 @@ def test_adapter_dependencies_do_not_cross(tmp_path: Path) -> None:
     engine_sources = "\n".join(
         path.read_text() for path in (package / "engine").glob("*.py")
     )
+    service_sources = "\n".join(
+        path.read_text() for path in (package / "service").glob("*.py")
+    )
+    store_sources = "\n".join(
+        path.read_text() for path in (package / "store").glob("*.py")
+    )
 
     assert "mcp_app.engine" not in mcp_sources
+    assert "mcp_app.store" not in mcp_sources
     assert "mcp_app.mcp" not in engine_sources
+    assert "mcp_app.service" not in engine_sources
+    assert "mcp_app.store" not in engine_sources
+    assert "mcp_app.mcp" not in service_sources
+    assert "mcp_app.mcp" not in store_sources
+    assert "mcp_app.service" not in store_sources
+    assert "mcp_app.engine" not in store_sources

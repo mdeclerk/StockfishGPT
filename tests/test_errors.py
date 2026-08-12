@@ -19,6 +19,7 @@ from mcp_app.service.errors import (
     PositionError,
     TerminalPositionError,
 )
+from mcp_app.store.errors import StoreDataError, StoreError, StoreUnavailableError
 
 
 @pytest.mark.parametrize(
@@ -34,6 +35,8 @@ from mcp_app.service.errors import (
         (EngineNotFoundError, EngineUnavailableError),
         (EngineNotStartedError, EngineUnavailableError),
         (EngineRestartingError, EngineUnavailableError),
+        (StoreDataError, StoreError),
+        (StoreUnavailableError, StoreError),
     ],
 )
 def test_errors_belong_to_their_layered_branches(

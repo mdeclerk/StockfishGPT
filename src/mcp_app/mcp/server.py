@@ -7,9 +7,10 @@ from mcp.server.transport_security import TransportSecuritySettings
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from mcp_app.mcp.resources import register_widget_resource
-from mcp_app.mcp.tools import register_tools
-from mcp_app.service import ChessService
+from mcp_app.service import ChessService, ServiceStatus
+
+from .resources import register_widget_resource
+from .tools import register_tools
 
 SERVER_INSTRUCTIONS = Path(__file__).with_name("instructions.md").read_text().strip()
 
@@ -36,9 +37,11 @@ def create_server(
 
     @mcp.custom_route("/health", methods=["GET"], include_in_schema=False)
     async def health(_: Request) -> JSONResponse:
-        if not service.is_alive:
-            return JSONResponse({"status": "engine_unavailable"}, status_code=503)
-        return JSONResponse({"status": "ok"})
+        status = await service.health_status()
+        return JSONResponse(
+            {"status": status.value},
+            status_code=200 if status is ServiceStatus.OK else 503,
+        )
 
     register_tools(mcp, service)
     register_widget_resource(mcp, widget_dir)

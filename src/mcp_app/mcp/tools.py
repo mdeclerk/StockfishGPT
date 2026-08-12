@@ -3,9 +3,10 @@
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
-from mcp_app.mcp.resources import WIDGET_URI
-from mcp_app.mcp.schemas import GameStateSchema, PositionAnalysisSchema
 from mcp_app.service import ChessService, Difficulty
+
+from .resources import WIDGET_URI
+from .schemas import GameStateSchema, PositionAnalysisSchema
 
 READ_ONLY = ToolAnnotations(
     readOnlyHint=True,

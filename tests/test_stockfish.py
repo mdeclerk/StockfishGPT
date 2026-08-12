@@ -20,6 +20,7 @@ from mcp_app.engine.errors import (
 from mcp_app.engine.stockfish import StockfishEngine
 from mcp_app.service.models import Difficulty
 from mcp_app.service.service import ChessService
+from mcp_app.store import LocalGameStore
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 AFTER_E4_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
@@ -417,7 +418,7 @@ async def test_real_stockfish_service_repeats_itself() -> None:
         pytest.fail("RUN_STOCKFISH_TESTS=1 but no Stockfish executable was found")
 
     async with StockfishEngine() as engine:
-        service = ChessService(engine)
+        service = ChessService(engine, LocalGameStore())
         choices: list[str] = []
         for _ in range(4):
             game = await service.start_game(Difficulty.CLUB)
