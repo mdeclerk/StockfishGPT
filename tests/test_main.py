@@ -4,7 +4,7 @@ import pytest
 from fakes import RecordingEngine
 
 import mcp_app.main as main_module
-from mcp_app.main import _load_settings, main
+from mcp_app.main import Settings, main
 
 CONFIG_ENVIRONMENT = ("HOST", "PORT", "WIDGET_DIR", "STOCKFISH_PATH")
 
@@ -36,7 +36,7 @@ def test_settings_defaults(
     make_widget_dir(tmp_path, "widget/dist")
     monkeypatch.chdir(tmp_path)
 
-    settings = _load_settings([])
+    settings = Settings.from_args([])
 
     assert settings.widget_dir == Path("widget/dist")
     assert settings.stockfish_path is None
@@ -55,7 +55,7 @@ def test_settings_load_plain_environment_variables(
     monkeypatch.setenv("HOST", "0.0.0.0")
     monkeypatch.setenv("PORT", "9000")
 
-    settings = _load_settings([])
+    settings = Settings.from_args([])
 
     assert settings.widget_dir == directory
     assert settings.stockfish_path == executable.resolve()
@@ -76,7 +76,7 @@ def test_cli_overrides_environment(
     monkeypatch.setenv("HOST", "127.0.0.2")
     monkeypatch.setenv("PORT", "7000")
 
-    settings = _load_settings(
+    settings = Settings.from_args(
         [
             "--widget-dir",
             str(cli_directory),
@@ -103,7 +103,7 @@ def test_dotenv_file_is_not_loaded(
     (tmp_path / ".env").write_text("PORT=9000\n")
     monkeypatch.chdir(tmp_path)
 
-    settings = _load_settings([])
+    settings = Settings.from_args([])
 
     assert settings.port == 8000
 
@@ -111,7 +111,7 @@ def test_dotenv_file_is_not_loaded(
 def test_cli_accepts_widget_directory_shortcut(tmp_path: Path) -> None:
     directory = make_widget_dir(tmp_path)
 
-    settings = _load_settings(["--wdir", str(directory)])
+    settings = Settings.from_args(["--wdir", str(directory)])
 
     assert settings.widget_dir == directory
 
@@ -124,7 +124,7 @@ def test_cli_rejects_removed_underscore_options(
     directory = make_widget_dir(tmp_path)
 
     with pytest.raises(SystemExit) as raised:
-        _load_settings(["--widget-dir", str(directory), option, "value"])
+        Settings.from_args(["--widget-dir", str(directory), option, "value"])
 
     assert raised.value.code == 2
 
@@ -133,7 +133,7 @@ def test_cli_help_uses_existing_descriptions(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     with pytest.raises(SystemExit) as raised:
-        _load_settings(["--help"])
+        Settings.from_args(["--help"])
 
     assert raised.value.code == 0
     output = capsys.readouterr().out
@@ -162,7 +162,7 @@ def test_widget_setting_rejects_unusable_directory(
         target.mkdir()
 
     with pytest.raises(SystemExit) as raised:
-        _load_settings(["--widget-dir", str(target)])
+        Settings.from_args(["--widget-dir", str(target)])
 
     assert raised.value.code == 2
     assert "mcp-app: configuration error" in capsys.readouterr().err
@@ -184,7 +184,7 @@ def test_stockfish_setting_rejects_unusable_target(
         target.chmod(0o644)
 
     with pytest.raises(SystemExit) as raised:
-        _load_settings(
+        Settings.from_args(
             [
                 "--widget-dir",
                 str(directory),
@@ -205,7 +205,7 @@ def test_port_setting_rejects_invalid_values(
     directory = make_widget_dir(tmp_path)
 
     with pytest.raises(SystemExit) as raised:
-        _load_settings(["--widget-dir", str(directory), "--port", port])
+        Settings.from_args(["--widget-dir", str(directory), "--port", port])
 
     assert raised.value.code == 2
     assert "Traceback" not in capsys.readouterr().err

@@ -5,6 +5,7 @@ import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from typing import Self
 
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, CliApp, SettingsConfigDict
@@ -48,6 +49,16 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    @classmethod
+    def from_args(cls, argv: Sequence[str] | None = None) -> Self:
+        """Load and validate settings from CLI arguments and the environment."""
+        cli_args = list(argv) if argv is not None else None
+        try:
+            return CliApp.run(cls, cli_args=cli_args)
+        except ValidationError as error:
+            print(f"mcp-app: configuration error:\n{error}", file=sys.stderr)
+            raise SystemExit(2) from None
+
     @field_validator("widget_dir")
     @classmethod
     def validate_widget_directory(cls, directory: Path) -> Path:
@@ -73,19 +84,9 @@ class Settings(BaseSettings):
         return executable
 
 
-def _load_settings(argv: Sequence[str] | None = None) -> Settings:
-    """Load and validate settings from CLI arguments and the environment."""
-    cli_args = list(argv) if argv is not None else None
-    try:
-        return CliApp.run(Settings, cli_args=cli_args)
-    except ValidationError as error:
-        print(f"mcp-app: configuration error:\n{error}", file=sys.stderr)
-        raise SystemExit(2) from None
-
-
 def main(argv: Sequence[str] | None = None) -> None:
     """Run Streamable HTTP at `/mcp`."""
-    settings = _load_settings(argv)
+    settings = Settings.from_args(argv)
     engine = StockfishEngine(settings.stockfish_path)
     service = ChessService(engine)
     mcp = create_server(
