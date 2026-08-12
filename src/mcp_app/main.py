@@ -97,10 +97,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
 
     async def run_async() -> None:
-        await service.start()
-        try:
+        async with engine:
             await mcp.run_streamable_http_async()
-        finally:
-            await service.close()
 
     asyncio.run(run_async())

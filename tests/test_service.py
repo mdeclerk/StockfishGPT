@@ -94,23 +94,19 @@ class LineEngine(FirstMoveEngine):
         return infos
 
 
-def test_supported_engines_satisfy_the_service_protocol() -> None:
+def test_analysis_engine_satisfies_the_service_protocol() -> None:
     assert isinstance(FirstMoveEngine(), _Engine)
-    assert isinstance(RecordingEngine(), _Engine)
 
 
 @pytest.mark.asyncio
-async def test_service_delegates_lifecycle() -> None:
+async def test_service_reports_engine_liveness() -> None:
     engine = RecordingEngine()
     service = ChessService(engine)
 
     assert service.is_alive is False
-    await service.start()
-    assert service.is_alive is True
-    await service.close()
-
-    assert engine.starts == 1
-    assert engine.stops == 1
+    async with engine:
+        assert service.is_alive is True
+    assert service.is_alive is False
 
 
 @pytest.mark.asyncio

@@ -53,14 +53,10 @@ _PRESETS = {
 
 @runtime_checkable
 class _Engine(Protocol):
-    """Raw engine analysis and lifecycle."""
+    """Raw engine analysis and liveness."""
 
     @property
     def is_alive(self) -> bool: ...
-
-    async def start(self) -> None: ...
-
-    async def close(self) -> None: ...
 
     async def analyze(
         self,
@@ -92,12 +88,6 @@ class ChessService:
     @property
     def is_alive(self) -> bool:
         return self._engine.is_alive
-
-    async def start(self) -> None:
-        await self._engine.start()
-
-    async def close(self) -> None:
-        await self._engine.close()
 
     async def start_game(
         self,

@@ -1,5 +1,7 @@
 """Raw analysis-engine doubles shared by backend tests."""
 
+from typing import Self
+
 import chess
 import chess.engine
 
@@ -24,12 +26,6 @@ class FirstMoveEngine:
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, int, int]] = []
-
-    async def start(self) -> None:
-        return None
-
-    async def close(self) -> None:
-        return None
 
     async def analyze(
         self,
@@ -64,3 +60,10 @@ class RecordingEngine(FirstMoveEngine):
     async def close(self) -> None:
         self.stops += 1
         self.running = False
+
+    async def __aenter__(self) -> Self:
+        await self.start()
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()

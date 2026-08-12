@@ -275,7 +275,7 @@ def test_main_configures_and_runs_server_lifecycle(
     assert engine.running is False
 
 
-def test_main_closes_service_when_server_fails(
+def test_main_closes_engine_when_server_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
