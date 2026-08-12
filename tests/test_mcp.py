@@ -3,6 +3,7 @@ from pathlib import Path
 import httpx
 import pytest
 from fakes import FirstMoveEngine, RecordingEngine
+from mcp.server.fastmcp import FastMCP
 from mcp.shared.memory import create_connected_server_and_client_session
 from mcp.types import LATEST_PROTOCOL_VERSION
 
@@ -12,7 +13,7 @@ from mcp_app.mcp.resources import (
     WIDGET_URI,
     read_widget,
 )
-from mcp_app.mcp.server import SERVER_INSTRUCTIONS, create_server
+from mcp_app.mcp.server import SERVER_INSTRUCTIONS, McpServer
 from mcp_app.service.service import ChessService
 from mcp_app.store import GameStore, LocalGameStore
 
@@ -27,15 +28,15 @@ def make_widget_dir(
     return directory
 
 
-def make_server(
+def make_mcp_server(
     tmp_path: Path,
     engine: FirstMoveEngine | None = None,
     *,
     store: GameStore | None = None,
     host: str = "127.0.0.1",
     port: int = 8000,
-):
-    return create_server(
+) -> McpServer:
+    return McpServer(
         ChessService(
             engine or FirstMoveEngine(),
             store if store is not None else LocalGameStore(),
@@ -44,6 +45,23 @@ def make_server(
         host=host,
         port=port,
     )
+
+
+def make_server(
+    tmp_path: Path,
+    engine: FirstMoveEngine | None = None,
+    *,
+    store: GameStore | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> FastMCP:
+    return make_mcp_server(
+        tmp_path,
+        engine,
+        store=store,
+        host=host,
+        port=port,
+    ).fastmcp
 
 
 def test_widget_resource_reads_bundle_and_reports_failure(tmp_path: Path) -> None:
@@ -104,6 +122,26 @@ def test_server_accepts_network_overrides(tmp_path: Path) -> None:
         mcp.settings.transport_security.enable_dns_rebinding_protection
         is False
     )
+
+
+@pytest.mark.asyncio
+async def test_run_async_serves_streamable_http(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    server = make_mcp_server(tmp_path)
+    runs = 0
+
+    async def fake_run() -> None:
+        nonlocal runs
+        runs += 1
+
+    assert isinstance(server.fastmcp, FastMCP)
+    monkeypatch.setattr(server.fastmcp, "run_streamable_http_async", fake_run)
+
+    await server.run_async()
+
+    assert runs == 1
 
 
 @pytest.mark.asyncio

@@ -272,7 +272,7 @@ def test_main_configures_and_runs_server_lifecycle(
     widget_dir = make_widget_dir(tmp_path)
 
     class FakeServer:
-        async def run_streamable_http_async(self) -> None:
+        async def run_async(self) -> None:
             calls["runs"] = int(calls.get("runs", 0)) + 1
             assert engine.running is True
             assert store.running is True
@@ -281,7 +281,7 @@ def test_main_configures_and_runs_server_lifecycle(
         calls["stockfish"] = stockfish
         return engine
 
-    def fake_create_server(
+    def fake_mcp_server(
         service: object,
         directory: Path,
         *,
@@ -298,7 +298,7 @@ def test_main_configures_and_runs_server_lifecycle(
 
     monkeypatch.setattr(main_module, "StockfishEngine", fake_engine)
     monkeypatch.setattr(main_module, "LocalGameStore", lambda: store)
-    monkeypatch.setattr(main_module, "create_server", fake_create_server)
+    monkeypatch.setattr(main_module, "McpServer", fake_mcp_server)
 
     main(
         [
@@ -339,7 +339,7 @@ def test_main_closes_engine_when_server_fails(
     store = RecordingStore()
 
     class FailingServer:
-        async def run_streamable_http_async(self) -> None:
+        async def run_async(self) -> None:
             assert engine.running is True
             assert store.running is True
             raise RuntimeError("server failed")
@@ -348,7 +348,7 @@ def test_main_closes_engine_when_server_fails(
     monkeypatch.setattr(main_module, "LocalGameStore", lambda: store)
     monkeypatch.setattr(
         main_module,
-        "create_server",
+        "McpServer",
         lambda *_args, **_kwargs: FailingServer(),
     )
 
@@ -377,14 +377,14 @@ def test_main_closes_store_when_engine_startup_fails(
             raise AssertionError("an engine that failed to enter must not exit")
 
     class UnusedServer:
-        async def run_streamable_http_async(self) -> None:
+        async def run_async(self) -> None:
             raise AssertionError("server must not run")
 
     monkeypatch.setattr(main_module, "StockfishEngine", lambda _: FailingEngine())
     monkeypatch.setattr(main_module, "LocalGameStore", lambda: store)
     monkeypatch.setattr(
         main_module,
-        "create_server",
+        "McpServer",
         lambda *_args, **_kwargs: UnusedServer(),
     )
 
@@ -411,7 +411,7 @@ def test_main_selects_redis_store_when_url_is_configured(
             return store
 
     class FakeServer:
-        async def run_streamable_http_async(self) -> None:
+        async def run_async(self) -> None:
             assert engine.running is True
             assert store.running is True
 
@@ -419,7 +419,7 @@ def test_main_selects_redis_store_when_url_is_configured(
     monkeypatch.setattr(main_module, "RedisGameStore", FakeRedisGameStore)
     monkeypatch.setattr(
         main_module,
-        "create_server",
+        "McpServer",
         lambda *_args, **_kwargs: FakeServer(),
     )
 

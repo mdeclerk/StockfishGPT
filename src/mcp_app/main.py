@@ -11,7 +11,7 @@ from pydantic import Field, RedisDsn, ValidationError, field_validator
 from pydantic_settings import BaseSettings, CliApp, SettingsConfigDict
 
 from .engine import StockfishEngine
-from .mcp import WIDGET_FILENAME, create_server
+from .mcp import WIDGET_FILENAME, McpServer
 from .service import ChessService
 from .store import LocalGameStore, RedisGameStore
 
@@ -99,7 +99,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         else LocalGameStore()
     )
     service = ChessService(engine, store)
-    mcp = create_server(
+    server = McpServer(
         service,
         settings.widget_dir,
         host=settings.host,
@@ -108,6 +108,6 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     async def run_async() -> None:
         async with store, engine:
-            await mcp.run_streamable_http_async()
+            await server.run_async()
 
     asyncio.run(run_async())
