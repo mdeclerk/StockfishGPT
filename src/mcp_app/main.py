@@ -10,9 +10,9 @@ from typing import Self
 from pydantic import Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, CliApp, SettingsConfigDict
 
+from mcp_app.engine import StockfishEngine
 from mcp_app.mcp import WIDGET_FILENAME, create_server
 from mcp_app.service import ChessService
-from mcp_app.stockfish import StockfishEngine
 
 
 class Settings(BaseSettings):

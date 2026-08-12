@@ -1,15 +1,6 @@
 import pytest
 
-from mcp_app.service.errors import (
-    ChessServiceError,
-    GameNotFoundError,
-    GameVersionError,
-    InvalidAnalysisError,
-    InvalidMoveError,
-    PositionError,
-    TerminalPositionError,
-)
-from mcp_app.stockfish.errors import (
+from mcp_app.engine.errors import (
     EngineBrokenError,
     EngineError,
     EngineNotFoundError,
@@ -18,6 +9,15 @@ from mcp_app.stockfish.errors import (
     EngineRestartingError,
     EngineTimeoutError,
     EngineUnavailableError,
+)
+from mcp_app.service.errors import (
+    ChessServiceError,
+    GameNotFoundError,
+    GameVersionError,
+    InvalidAnalysisError,
+    InvalidMoveError,
+    PositionError,
+    TerminalPositionError,
 )
 
 

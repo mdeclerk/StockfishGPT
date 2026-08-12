@@ -150,7 +150,7 @@ The server owns each game and returns complete authoritative snapshots. The widg
 ├── src/mcp_app/
 │   ├── mcp/              # FastMCP tools, resources, and wire schemas
 │   ├── service/          # Server-owned games, chess behavior, and domain models
-│   ├── stockfish/        # Raw UCI process adapter
+│   ├── engine/           # Stockfish engine and errors
 │   └── main.py           # CLI, composition, and process lifecycle
 ├── widget/               # React chess widget
 ├── tests/                # Backend test suite

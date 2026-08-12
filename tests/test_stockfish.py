@@ -9,17 +9,17 @@ import chess
 import chess.engine
 import pytest
 
-import mcp_app.stockfish.engine as engine_module
-from mcp_app.service.models import Difficulty
-from mcp_app.service.service import ChessService
-from mcp_app.stockfish.engine import StockfishEngine
-from mcp_app.stockfish.errors import (
+import mcp_app.engine.stockfish as stockfish_module
+from mcp_app.engine.errors import (
     EngineNotFoundError,
     EngineNotStartedError,
     EngineProcessError,
     EngineRestartingError,
     EngineTimeoutError,
 )
+from mcp_app.engine.stockfish import StockfishEngine
+from mcp_app.service.models import Difficulty
+from mcp_app.service.service import ChessService
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 AFTER_E4_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
@@ -349,7 +349,7 @@ async def test_analysis_requires_started_engine() -> None:
 async def test_analysis_timeout_is_typed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(engine_module, "_ENGINE_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(stockfish_module, "_ENGINE_TIMEOUT_SECONDS", 0.001)
     engine, protocol, _, _ = fake_engine()
     protocol.analysis_delay = 0.05
     await engine.start()

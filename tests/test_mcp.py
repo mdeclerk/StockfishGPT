@@ -329,9 +329,9 @@ async def test_service_errors_propagate_as_tool_errors(
 def test_adapter_dependencies_do_not_cross(tmp_path: Path) -> None:
     package = Path(__file__).parents[1] / "src" / "mcp_app"
     mcp_sources = "\n".join(path.read_text() for path in (package / "mcp").glob("*.py"))
-    stockfish_sources = "\n".join(
-        path.read_text() for path in (package / "stockfish").glob("*.py")
+    engine_sources = "\n".join(
+        path.read_text() for path in (package / "engine").glob("*.py")
     )
 
-    assert "mcp_app.stockfish" not in mcp_sources
-    assert "mcp_app.mcp" not in stockfish_sources
+    assert "mcp_app.engine" not in mcp_sources
+    assert "mcp_app.mcp" not in engine_sources
