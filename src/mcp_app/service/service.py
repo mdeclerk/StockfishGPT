@@ -260,10 +260,12 @@ class ChessService:
 
     @classmethod
     def _choose(cls, evaluation: Evaluation, difficulty: Difficulty) -> Move:
-        if difficulty is Difficulty.STRONG:
+        preset = _PRESETS[difficulty]
+        # Zero temperature is the argmax limit of the weighting below, which
+        # would divide by it.
+        if preset.temperature <= 0:
             return evaluation.best
 
-        preset = _PRESETS[difficulty]
         viable, losses = cls._viable_candidates(evaluation, preset.maximum_loss)
         weights = tuple(math.exp(-loss / preset.temperature) for loss in losses)
         seed = f"{evaluation.fen}|{difficulty.value}"

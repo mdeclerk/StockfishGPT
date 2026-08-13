@@ -33,31 +33,6 @@ DESTRUCTIVE = ToolAnnotations(
     openWorldHint=False,
 )
 
-START_GAME_DESCRIPTION = (
-    "Immediately call for every play/start request when no game_id exists; do "
-    "not reply first or claim success unless this tool returns successfully. "
-    "Opens the board with the user as White and needs no board, FEN, or game_id. "
-    "Use once per chat; the board handles reset, moves, and undo."
-)
-RESET_GAME_DESCRIPTION = (
-    "Restart the active game at the chosen difficulty from the board."
-)
-PLAY_WHITE_MOVE_DESCRIPTION = (
-    "Play one legal White move, then play Stockfish's reply unless White's move "
-    "ends the game."
-)
-UNDO_WHITE_MOVE_DESCRIPTION = (
-    "Undo the last White move and Stockfish reply, or only White's move if it "
-    "ended the game."
-)
-GET_GAME_STATE_DESCRIPTION = (
-    "Fetch the fresh authoritative state for facts, status, history, or rules."
-)
-ANALYZE_POSITION_DESCRIPTION = (
-    "Analyze the fresh position for advice, plans, tactics, evaluation, or "
-    "variations. `game` is the authoritative snapshot; candidates are best-first."
-)
-
 
 def register_tools(mcp: FastMCP, service: ChessService) -> None:
     """Register the public tool contract."""
@@ -65,7 +40,13 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="start_game",
         title="Start Chess Game",
-        description=START_GAME_DESCRIPTION,
+        description=(
+            "Immediately call for every play/start request when no game_id "
+            "exists; do not reply first or claim success unless this tool "
+            "returns successfully. Opens the board with the user as White and "
+            "needs no board, FEN, or game_id. Use once per chat; the board "
+            "handles reset, moves, and undo."
+        ),
         annotations=CREATE,
         meta={
             "ui": {
@@ -84,7 +65,9 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="reset_game",
         title="Reset Chess Game",
-        description=RESET_GAME_DESCRIPTION,
+        description=(
+            "Restart the active game at the chosen difficulty from the board."
+        ),
         annotations=DESTRUCTIVE,
         meta={"ui": {"visibility": ["app"]}},
         structured_output=True,
@@ -101,7 +84,10 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="play_white_move",
         title="Play White Move",
-        description=PLAY_WHITE_MOVE_DESCRIPTION,
+        description=(
+            "Play one legal White move, then play Stockfish's reply unless "
+            "White's move ends the game."
+        ),
         annotations=MUTATING,
         meta={"ui": {"visibility": ["app"]}},
         structured_output=True,
@@ -118,7 +104,10 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="undo_white_move",
         title="Undo White Move",
-        description=UNDO_WHITE_MOVE_DESCRIPTION,
+        description=(
+            "Undo the last White move and Stockfish reply, or only White's "
+            "move if it ended the game."
+        ),
         annotations=DESTRUCTIVE,
         meta={"ui": {"visibility": ["app"]}},
         structured_output=True,
@@ -131,7 +120,9 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="get_game_state",
         title="Get Chess Game State",
-        description=GET_GAME_STATE_DESCRIPTION,
+        description=(
+            "Fetch the fresh authoritative state for facts, status, history, or rules."
+        ),
         annotations=READ_ONLY,
         meta={"ui": {"visibility": ["model", "app"]}},
         structured_output=True,
@@ -142,7 +133,11 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
     @mcp.tool(
         name="analyze_position",
         title="Analyze Chess Position",
-        description=ANALYZE_POSITION_DESCRIPTION,
+        description=(
+            "Analyze the fresh position for advice, plans, tactics, "
+            "evaluation, or variations. `game` is the authoritative snapshot; "
+            "candidates are best-first."
+        ),
         annotations=READ_ONLY,
         meta={"ui": {"visibility": ["model", "app"]}},
         structured_output=True,

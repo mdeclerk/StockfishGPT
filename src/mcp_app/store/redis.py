@@ -24,6 +24,9 @@ from .models import StoredGameState
 # leaves ample room above the engine's own per-operation timeout.
 DEFAULT_LOCK_TTL_SECONDS = 30.0
 
+# A rolling deploy points two code versions at one keyspace. Stamping the
+# schema turns a mismatch into a clean StoreDataError instead of a silent
+# misread when a field's meaning changes without its shape.
 _SCHEMA_VERSION = 1
 _RECORD_ADAPTER: TypeAdapter[StoredGameState] = TypeAdapter(StoredGameState)
 
