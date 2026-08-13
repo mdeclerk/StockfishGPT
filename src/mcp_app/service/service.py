@@ -227,10 +227,7 @@ class ChessService:
         board = chess.Board()
         try:
             for move_uci in record.uci_history:
-                move = chess.Move.from_uci(move_uci)
-                if move not in board.legal_moves:
-                    raise ValueError("stored move is illegal")
-                board.push(move)
+                board.push_uci(move_uci)
         except ValueError as error:
             raise StoreDataError(
                 f"stored move history for game {record.game_id!r} is invalid"
@@ -249,12 +246,9 @@ class ChessService:
     @staticmethod
     def _legal_move(board: chess.Board, move_uci: str) -> chess.Move:
         try:
-            move = chess.Move.from_uci(move_uci)
+            return board.parse_uci(move_uci)
         except ValueError as error:
             raise InvalidMoveError(move_uci) from error
-        if move not in board.legal_moves:
-            raise InvalidMoveError(move_uci)
-        return move
 
     async def _analyze_position(self, board: chess.Board) -> Evaluation:
         infos = await self._engine.analyze(
@@ -318,8 +312,7 @@ class ChessService:
         san_history: list[str] = []
         for move in board.move_stack:
             uci_history.append(move.uci())
-            san_history.append(replay.san(move))
-            replay.push(move)
+            san_history.append(replay.san_and_push(move))
         return tuple(uci_history), tuple(san_history)
 
     @staticmethod
