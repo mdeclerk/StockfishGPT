@@ -8,7 +8,7 @@ from dataclasses import dataclass
 import chess
 
 from mcp_app.engine import Engine
-from mcp_app.store import GameRecord, GameStore, StoreDataError, StoredOutlook
+from mcp_app.store import GameStore, StoreDataError, StoredGameState, StoredOutlook
 
 from .errors import (
     GameNotFoundError,
@@ -68,7 +68,7 @@ class ChessService:
         difficulty: Difficulty = Difficulty.CLUB,
     ) -> GameState:
         while True:
-            record = GameRecord(
+            record = StoredGameState(
                 game_id=self._new_game_id(),
                 version=0,
                 difficulty=difficulty.value,
@@ -86,7 +86,7 @@ class ChessService:
     ) -> GameState:
         record = await self._get_record(game_id)
         self._require_version(record, version)
-        replacement = GameRecord(
+        replacement = StoredGameState(
             game_id=record.game_id,
             version=record.version + 1,
             difficulty=difficulty.value,
@@ -127,7 +127,7 @@ class ChessService:
             history = (*history, reply.move_uci)
             outlooks = (*outlooks, self._store_outlook(reply.wdl))
 
-        replacement = GameRecord(
+        replacement = StoredGameState(
             game_id=record.game_id,
             version=record.version + 1,
             difficulty=record.difficulty,
@@ -155,7 +155,7 @@ class ChessService:
             raise NothingToUndoError
 
         plies = 2 if len(record.uci_history) % 2 == 0 else 1
-        replacement = GameRecord(
+        replacement = StoredGameState(
             game_id=record.game_id,
             version=record.version + 1,
             difficulty=record.difficulty,
@@ -169,7 +169,7 @@ class ChessService:
     def _new_game_id() -> str:
         return secrets.token_urlsafe(24)
 
-    async def _get_record(self, game_id: str) -> GameRecord:
+    async def _get_record(self, game_id: str) -> StoredGameState:
         record = await self._store.get(game_id)
         if record is None:
             raise GameNotFoundError(game_id)
@@ -177,8 +177,8 @@ class ChessService:
 
     async def _commit(
         self,
-        expected: GameRecord,
-        replacement: GameRecord,
+        expected: StoredGameState,
+        replacement: StoredGameState,
         requested_version: int,
     ) -> None:
         if await self._store.compare_and_set(expected, replacement):
@@ -193,12 +193,12 @@ class ChessService:
         )
 
     @staticmethod
-    def _require_version(record: GameRecord, version: int) -> None:
+    def _require_version(record: StoredGameState, version: int) -> None:
         if version != record.version:
             raise GameVersionError(record.game_id, version, record.version)
 
     @staticmethod
-    def _board(record: GameRecord) -> chess.Board:
+    def _board(record: StoredGameState) -> chess.Board:
         board = chess.Board()
         try:
             for move_uci in record.uci_history:
@@ -213,7 +213,7 @@ class ChessService:
         return board
 
     @staticmethod
-    def _difficulty(record: GameRecord) -> Difficulty:
+    def _difficulty(record: StoredGameState) -> Difficulty:
         try:
             return Difficulty(record.difficulty)
         except ValueError as error:
@@ -252,7 +252,7 @@ class ChessService:
         return Evaluation.from_stockfish(board, infos)
 
     @classmethod
-    def _snapshot(cls, record: GameRecord, board: chess.Board) -> GameState:
+    def _snapshot(cls, record: StoredGameState, board: chess.Board) -> GameState:
         uci_history, san_history = cls._histories(board)
         return GameState(
             game_id=record.game_id,

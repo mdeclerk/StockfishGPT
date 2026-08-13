@@ -17,7 +17,7 @@ from mcp_app.service.service import ChessService
 from mcp_app.store import LocalGameStore
 from mcp_app.store.errors import StoreDataError
 from mcp_app.store.local import DEFAULT_GAME_TTL_SECONDS
-from mcp_app.store.models import GameRecord
+from mcp_app.store.models import StoredGameState
 
 
 def make_service(engine: Engine) -> ChessService:
@@ -156,7 +156,7 @@ async def test_start_retries_an_atomic_game_id_collision() -> None:
             super().__init__()
             self.create_calls = 0
 
-        async def create(self, record: GameRecord) -> bool:
+        async def create(self, record: StoredGameState) -> bool:
             self.create_calls += 1
             if self.create_calls == 1:
                 return False
@@ -175,7 +175,7 @@ async def test_start_retries_an_atomic_game_id_collision() -> None:
 async def test_invalid_persisted_domain_values_are_typed_store_errors() -> None:
     store = LocalGameStore()
     service = ChessService(FirstMoveEngine(), store)
-    record = GameRecord("broken", 0, "impossible", (), (None,))
+    record = StoredGameState("broken", 0, "impossible", (), (None,))
     assert await store.create(record)
 
     with pytest.raises(StoreDataError, match="difficulty"):

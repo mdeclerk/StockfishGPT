@@ -2,21 +2,21 @@
 
 from typing import Protocol, runtime_checkable
 
-from .models import GameRecord
+from .models import StoredGameState
 
 
 @runtime_checkable
 class GameStore(Protocol):
-    """Atomic storage for authoritative game records."""
+    """Atomic storage for authoritative stored game states."""
 
-    async def create(self, record: GameRecord) -> bool: ...
+    async def create(self, record: StoredGameState) -> bool: ...
 
-    async def get(self, game_id: str) -> GameRecord | None: ...
+    async def get(self, game_id: str) -> StoredGameState | None: ...
 
     async def compare_and_set(
         self,
-        expected: GameRecord,
-        replacement: GameRecord,
+        expected: StoredGameState,
+        replacement: StoredGameState,
     ) -> bool: ...
 
     async def is_ready(self) -> bool: ...

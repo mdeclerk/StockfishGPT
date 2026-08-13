@@ -23,7 +23,7 @@ class StoredOutlook:
 
 
 @dataclass(frozen=True, slots=True)
-class GameRecord:
+class StoredGameState:
     """Minimal authoritative state needed to reconstruct one game."""
 
     game_id: str

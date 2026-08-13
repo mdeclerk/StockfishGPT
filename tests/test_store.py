@@ -10,11 +10,11 @@ from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from mcp_app.store import (
-    GameRecord,
     GameStore,
     LocalGameStore,
     RedisGameStore,
     StoreDataError,
+    StoredGameState,
     StoredOutlook,
     StoreUnavailableError,
 )
@@ -33,10 +33,10 @@ class ManualClock:
         self.now += seconds
 
 
-def game_record(game_id: str, version: int = 0) -> GameRecord:
+def stored_game_state(game_id: str, version: int = 0) -> StoredGameState:
     if version == 0:
-        return GameRecord(game_id, 0, "club", (), (None,))
-    return GameRecord(
+        return StoredGameState(game_id, 0, "club", (), (None,))
+    return StoredGameState(
         game_id,
         version,
         "strong",
@@ -69,12 +69,12 @@ async def fake_backend(
 @pytest.mark.asyncio
 async def test_store_contract_create_get_and_collision(kind: str) -> None:
     async with fake_backend(kind) as store:
-        original = game_record("game")
+        original = stored_game_state("game")
 
         assert isinstance(store, GameStore)
         assert await store.is_ready() is True
         assert await store.create(original) is True
-        assert await store.create(game_record("game", 1)) is False
+        assert await store.create(stored_game_state("game", 1)) is False
         assert await store.get("game") == original
         assert await store.get("missing") is None
 
@@ -85,9 +85,9 @@ async def test_store_contract_compare_and_set_has_one_concurrent_winner(
     kind: str,
 ) -> None:
     async with fake_backend(kind) as store:
-        original = game_record("game")
-        first = game_record("game", 1)
-        second = GameRecord("game", 2, "beginner", (), (None,))
+        original = stored_game_state("game")
+        first = stored_game_state("game", 1)
+        second = StoredGameState("game", 2, "beginner", (), (None,))
         assert await store.create(original)
 
         results = await asyncio.gather(
@@ -106,9 +106,9 @@ async def test_store_contract_evicts_the_least_recently_used_game(
     kind: str,
 ) -> None:
     async with fake_backend(kind, max_games=2) as store:
-        first = game_record("first")
-        second = game_record("second")
-        third = game_record("third")
+        first = stored_game_state("first")
+        second = stored_game_state("second")
+        third = stored_game_state("third")
         assert await store.create(first)
         assert await store.create(second)
         assert await store.get("first") == first
@@ -123,7 +123,7 @@ async def test_store_contract_evicts_the_least_recently_used_game(
 async def test_local_store_uses_sliding_expiration_with_an_injected_clock() -> None:
     clock = ManualClock()
     store = LocalGameStore(ttl_seconds=10, clock=clock)
-    record = game_record("game")
+    record = stored_game_state("game")
     assert await store.create(record)
 
     clock.advance(6)
@@ -139,7 +139,7 @@ async def test_redis_store_serializes_records_and_rejects_malformed_data() -> No
     server = fakeredis.FakeServer()
     client = fakeredis.FakeAsyncRedis(server=server)
     store = RedisGameStore(client, namespace="serialization-test")
-    record = game_record("game", 1)
+    record = stored_game_state("game", 1)
     try:
         assert RedisGameStore._deserialize(RedisGameStore._serialize(record)) == record
         await client.set(store._record_key("broken"), b"not-json")
@@ -213,19 +213,22 @@ async def test_real_redis_shares_atomic_state_ttl_and_lru() -> None:
     )
     try:
         async with first_store, second_store:
-            original = game_record("original")
+            original = stored_game_state("original")
             assert await first_store.create(original)
             assert await second_store.get("original") == original
 
-            replacements = (game_record("original", 1), game_record("original", 2))
+            replacements = (
+                stored_game_state("original", 1),
+                stored_game_state("original", 2),
+            )
             results = await asyncio.gather(
                 first_store.compare_and_set(original, replacements[0]),
                 second_store.compare_and_set(original, replacements[1]),
             )
             assert sorted(results) == [False, True]
 
-            other = game_record("other")
-            latest = game_record("latest")
+            other = stored_game_state("other")
+            latest = stored_game_state("latest")
             assert await first_store.create(other)
             assert await first_store.get("original") is not None
             assert await second_store.create(latest)

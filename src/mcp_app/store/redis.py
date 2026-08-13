@@ -10,7 +10,7 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from .errors import StoreDataError, StoreUnavailableError
 from .local import DEFAULT_GAME_TTL_SECONDS, DEFAULT_MAX_GAMES
-from .models import GameRecord, StoredOutlook
+from .models import StoredGameState, StoredOutlook
 
 _SCHEMA_VERSION = 1
 
@@ -133,7 +133,7 @@ class RedisGameStore:
         except RedisError:
             return False
 
-    async def create(self, record: GameRecord) -> bool:
+    async def create(self, record: StoredGameState) -> bool:
         payload = self._serialize(record)
         result = await self._execute(
             self._client.eval(
@@ -151,7 +151,7 @@ class RedisGameStore:
         )
         return bool(result)
 
-    async def get(self, game_id: str) -> GameRecord | None:
+    async def get(self, game_id: str) -> StoredGameState | None:
         payload = await self._execute(
             self._client.eval(
                 _GET_SCRIPT,
@@ -169,8 +169,8 @@ class RedisGameStore:
 
     async def compare_and_set(
         self,
-        expected: GameRecord,
-        replacement: GameRecord,
+        expected: StoredGameState,
+        replacement: StoredGameState,
     ) -> bool:
         if replacement.game_id != expected.game_id:
             raise ValueError("replacement game_id must match expected game_id")
@@ -200,7 +200,7 @@ class RedisGameStore:
             raise StoreUnavailableError("Redis game store is unavailable") from error
 
     @staticmethod
-    def _serialize(record: GameRecord) -> bytes:
+    def _serialize(record: StoredGameState) -> bytes:
         data = {
             "difficulty": record.difficulty,
             "game_id": record.game_id,
@@ -226,11 +226,11 @@ class RedisGameStore:
         ).encode()
 
     @classmethod
-    def _deserialize(cls, payload: bytes | str) -> GameRecord:
+    def _deserialize(cls, payload: bytes | str) -> StoredGameState:
         try:
             data = json.loads(payload)
             if not isinstance(data, dict) or data.get("schema") != _SCHEMA_VERSION:
-                raise ValueError("unsupported game-record schema")
+                raise ValueError("unsupported stored-game-state schema")
             game_id = cls._string(data, "game_id")
             version = cls._integer(data, "version")
             difficulty = cls._string(data, "difficulty")
@@ -243,7 +243,7 @@ class RedisGameStore:
             if not isinstance(raw_outlooks, list):
                 raise ValueError("outlooks must be a list")
             outlooks = tuple(cls._deserialize_outlook(value) for value in raw_outlooks)
-            return GameRecord(
+            return StoredGameState(
                 game_id=game_id,
                 version=version,
                 difficulty=difficulty,
@@ -251,7 +251,7 @@ class RedisGameStore:
                 outlooks=outlooks,
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
-            raise StoreDataError("stored game record is malformed") from error
+            raise StoreDataError("stored game state is malformed") from error
 
     @staticmethod
     def _string(data: dict[str, Any], name: str) -> str:

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Self
 
-from .models import GameRecord
+from .models import StoredGameState
 
 DEFAULT_GAME_TTL_SECONDS = 3600.0
 DEFAULT_MAX_GAMES = 1024
@@ -15,7 +15,7 @@ DEFAULT_MAX_GAMES = 1024
 
 @dataclass(slots=True)
 class _Entry:
-    record: GameRecord
+    record: StoredGameState
     last_access: float
 
 
@@ -51,7 +51,7 @@ class LocalGameStore:
     async def is_ready(self) -> bool:
         return True
 
-    async def create(self, record: GameRecord) -> bool:
+    async def create(self, record: StoredGameState) -> bool:
         async with self._lock:
             now = self._clock()
             self._purge_expired(now)
@@ -62,7 +62,7 @@ class LocalGameStore:
                 self._entries.popitem(last=False)
             return True
 
-    async def get(self, game_id: str) -> GameRecord | None:
+    async def get(self, game_id: str) -> StoredGameState | None:
         async with self._lock:
             now = self._clock()
             self._purge_expired(now)
@@ -75,8 +75,8 @@ class LocalGameStore:
 
     async def compare_and_set(
         self,
-        expected: GameRecord,
-        replacement: GameRecord,
+        expected: StoredGameState,
+        replacement: StoredGameState,
     ) -> bool:
         if replacement.game_id != expected.game_id:
             raise ValueError("replacement game_id must match expected game_id")

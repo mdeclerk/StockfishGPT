@@ -2,12 +2,12 @@
 
 from .errors import StoreDataError, StoreError, StoreUnavailableError
 from .local import LocalGameStore
-from .models import GameRecord, StoredOutlook
+from .models import StoredGameState, StoredOutlook
 from .protocol import GameStore
 from .redis import RedisGameStore
 
 __all__ = [
-    "GameRecord",
+    "StoredGameState",
     "GameStore",
     "LocalGameStore",
     "RedisGameStore",
