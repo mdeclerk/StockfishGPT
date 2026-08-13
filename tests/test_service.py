@@ -6,19 +6,25 @@ import pytest
 from fakes import FirstMoveEngine, RecordingEngine, candidate_info
 
 from mcp_app.engine import Engine
-from mcp_app.service.errors import (
+from mcp_app.service import (
+    ChessService,
+    Difficulty,
     GameBusyError,
     GameNotFoundError,
+    GameStatus,
     GameVersionError,
     InvalidMoveError,
     NothingToUndoError,
+    ServiceStatus,
 )
-from mcp_app.service.models import Difficulty, GameStatus, ServiceStatus
-from mcp_app.service.service import ChessService
-from mcp_app.store import LocalGameStore, locked
-from mcp_app.store.errors import GameLeaseLostError, StoreDataError
-from mcp_app.store.local import DEFAULT_GAME_TTL_SECONDS
-from mcp_app.store.models import StoredGameState
+from mcp_app.store import (
+    DEFAULT_GAME_TTL_SECONDS,
+    GameLeaseLostError,
+    LocalGameStore,
+    StoreDataError,
+    StoredGameState,
+    locked,
+)
 
 
 def make_service(engine: Engine) -> ChessService:

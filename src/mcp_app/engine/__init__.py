@@ -1,6 +1,27 @@
-"""Analysis-engine adapters."""
+"""Analysis-engine contracts and adapters."""
 
-from mcp_app.engine.protocol import Engine
-from mcp_app.engine.stockfish import StockfishEngine
+from .errors import (
+    EngineBrokenError,
+    EngineError,
+    EngineNotFoundError,
+    EngineNotStartedError,
+    EngineProcessError,
+    EngineRestartingError,
+    EngineTimeoutError,
+    EngineUnavailableError,
+)
+from .protocol import Engine
+from .stockfish import StockfishEngine
 
-__all__ = ["Engine", "StockfishEngine"]
+__all__ = [
+    "Engine",
+    "EngineBrokenError",
+    "EngineError",
+    "EngineNotFoundError",
+    "EngineNotStartedError",
+    "EngineProcessError",
+    "EngineRestartingError",
+    "EngineTimeoutError",
+    "EngineUnavailableError",
+    "StockfishEngine",
+]

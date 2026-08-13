@@ -1,6 +1,6 @@
 import pytest
 
-from mcp_app.engine.errors import (
+from mcp_app.engine import (
     EngineBrokenError,
     EngineError,
     EngineNotFoundError,
@@ -10,7 +10,7 @@ from mcp_app.engine.errors import (
     EngineTimeoutError,
     EngineUnavailableError,
 )
-from mcp_app.service.errors import (
+from mcp_app.service import (
     ChessServiceError,
     GameBusyError,
     GameNotFoundError,
@@ -20,7 +20,7 @@ from mcp_app.service.errors import (
     PositionError,
     TerminalPositionError,
 )
-from mcp_app.store.errors import (
+from mcp_app.store import (
     GameLeaseLostError,
     GameLockedError,
     StoreDataError,

@@ -14,7 +14,7 @@ from mcp_app.mcp.resources import (
     read_widget,
 )
 from mcp_app.mcp.server import SERVER_INSTRUCTIONS, McpServer
-from mcp_app.service.service import ChessService
+from mcp_app.service import ChessService
 from mcp_app.store import GameStore, LocalGameStore
 
 

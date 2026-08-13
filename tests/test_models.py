@@ -6,9 +6,9 @@ import pytest
 from pydantic import ValidationError
 
 from mcp_app.mcp.schemas import MoveSchema, WinDrawLossSchema
-from mcp_app.service.errors import InvalidAnalysisError
-from mcp_app.service.models import (
+from mcp_app.service import (
     Evaluation,
+    InvalidAnalysisError,
     Move,
     Side,
     WinDrawLoss,

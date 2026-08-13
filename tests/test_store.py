@@ -223,6 +223,20 @@ async def test_redis_lock_is_shared_across_store_instances() -> None:
 
 
 @pytest.mark.asyncio
+async def test_redis_lock_lease_expires_after_the_configured_ttl() -> None:
+    server = fakeredis.FakeServer()
+    client = fakeredis.FakeAsyncRedis(server=server)
+    store = RedisGameStore(client, namespace="lock-ttl", lock_ttl_seconds=0.05)
+    try:
+        assert await store.try_lock("game") is not None
+        assert await store.try_lock("game") is None
+        await asyncio.sleep(0.1)
+        assert await store.try_lock("game") is not None  # lease reclaimed the lock
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_local_store_uses_sliding_expiration_with_an_injected_clock() -> None:
     clock = ManualClock()
     store = LocalGameStore(ttl_seconds=10, clock=clock)

@@ -10,16 +10,15 @@ import chess.engine
 import pytest
 
 import mcp_app.engine.stockfish as stockfish_module
-from mcp_app.engine.errors import (
+from mcp_app.engine import (
     EngineNotFoundError,
     EngineNotStartedError,
     EngineProcessError,
     EngineRestartingError,
     EngineTimeoutError,
+    StockfishEngine,
 )
-from mcp_app.engine.stockfish import StockfishEngine
-from mcp_app.service.models import Difficulty
-from mcp_app.service.service import ChessService
+from mcp_app.service import ChessService, Difficulty
 from mcp_app.store import LocalGameStore
 
 START_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"

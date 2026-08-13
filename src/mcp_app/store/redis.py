@@ -19,8 +19,10 @@ from .errors import (
 from .local import DEFAULT_GAME_TTL_SECONDS
 from .models import StoredGameState
 
+# A lease must outlast the longest request that holds it, or a slow engine
+# analysis commits under a lock a successor already took over. The default
+# leaves ample room above the engine's own per-operation timeout.
 DEFAULT_LOCK_TTL_SECONDS = 30.0
-_LOCK_TTL_MILLISECONDS = max(1, round(DEFAULT_LOCK_TTL_SECONDS * 1000))
 
 _SCHEMA_VERSION = 1
 _RECORD_ADAPTER: TypeAdapter[StoredGameState] = TypeAdapter(StoredGameState)
@@ -49,15 +51,19 @@ class RedisGameStore:
         client: Redis,
         *,
         ttl_seconds: float = DEFAULT_GAME_TTL_SECONDS,
+        lock_ttl_seconds: float = DEFAULT_LOCK_TTL_SECONDS,
         namespace: str = "stockfish-gpt",
         close_client: bool = False,
     ) -> None:
         if ttl_seconds <= 0:
             raise ValueError("ttl_seconds must be positive")
+        if lock_ttl_seconds <= 0:
+            raise ValueError("lock_ttl_seconds must be positive")
         if not namespace:
             raise ValueError("namespace must not be empty")
         self._client = client
         self._ttl_milliseconds = max(1, round(ttl_seconds * 1000))
+        self._lock_ttl_milliseconds = max(1, round(lock_ttl_seconds * 1000))
         base = f"{namespace}:{{games}}"
         self._record_prefix = f"{base}:record:"
         self._lock_prefix = f"{base}:lock:"
@@ -104,7 +110,7 @@ class RedisGameStore:
                 self._lock_key(game_id),
                 fence,
                 nx=True,
-                px=_LOCK_TTL_MILLISECONDS,
+                px=self._lock_ttl_milliseconds,
             )
         )
         if not acquired:
