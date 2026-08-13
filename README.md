@@ -5,7 +5,6 @@
 [![OpenAI Apps SDK](https://img.shields.io/badge/OpenAI%20Apps%20SDK-412991?logo=openai&logoColor=white)](https://developers.openai.com/apps-sdk)
 [![Stockfish](https://img.shields.io/badge/Stockfish-808080)](https://stockfishchess.org)
 [![FastMCP](https://img.shields.io/badge/FastMCP-black)](https://gofastmcp.com)
-[![Starlette](https://img.shields.io/badge/Starlette-261B4C)](https://www.starlette.io)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Redis](https://img.shields.io/badge/Redis-FF4438?logo=redis&logoColor=white)](https://redis.io)
@@ -21,9 +20,9 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
 
 1. **Install [Docker](https://docs.docker.com/get-docker/).**
 
-2. **Start Redis, MCP App & Public HTTPS Tunnel:**
+2. **Start MCP App, Redis, HTTPS Tunnel:**
    
-   Spin up MCP-App and cloudflared container:
+   Spin up containers:
 
    ```sh
    docker compose up
@@ -117,13 +116,13 @@ Run app and start the inspector `npx @modelcontextprotocol/inspector@latest` wit
 
 Full e2e experience on ChatGPT target:
 
-- Run app via:
+- Run app (use local in-memory game store, no Redis):
 
   ```sh
   uv run mcp-app
   ```
 
-- Start public tunnel 
+- Public tunnel 
 
   ```sh
   cloudflared tunnel --no-autoupdate --url http://localhost:8000
