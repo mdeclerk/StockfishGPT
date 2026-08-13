@@ -1,5 +1,6 @@
 """FastMCP server for StockfishGPT."""
 
+from importlib.resources import files
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -11,7 +12,9 @@ from .health import register_health_route
 from .resources import register_widget_resource
 from .tools import register_tools
 
-SERVER_INSTRUCTIONS = Path(__file__).with_name("instructions.md").read_text().strip()
+SERVER_INSTRUCTIONS = (
+    (files(__package__) / "instructions.md").read_text(encoding="utf-8").strip()
+)
 
 
 class McpServer:

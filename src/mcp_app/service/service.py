@@ -5,7 +5,7 @@ import random
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import chess
 
@@ -95,8 +95,8 @@ class ChessService:
         async with self._gate(game_id) as fence:
             record = await self._get_record(game_id)
             self._require_version(record, version)
-            replacement = StoredGameState(
-                game_id=record.game_id,
+            replacement = replace(
+                record,
                 version=record.version + 1,
                 difficulty=difficulty.value,
                 uci_history=(),
@@ -137,10 +137,9 @@ class ChessService:
                 history = (*history, reply.move_uci)
                 outlooks = (*outlooks, reply.wdl.to_store())
 
-            replacement = StoredGameState(
-                game_id=record.game_id,
+            replacement = replace(
+                record,
                 version=record.version + 1,
-                difficulty=record.difficulty,
                 uci_history=history,
                 outlooks=outlooks,
             )
@@ -167,10 +166,9 @@ class ChessService:
                 raise NothingToUndoError
 
             plies = 2 if len(record.uci_history) % 2 == 0 else 1
-            replacement = StoredGameState(
-                game_id=record.game_id,
+            replacement = replace(
+                record,
                 version=record.version + 1,
-                difficulty=record.difficulty,
                 uci_history=record.uci_history[:-plies],
                 outlooks=record.outlooks[:-plies],
             )
@@ -266,24 +264,23 @@ class ChessService:
         if preset.temperature <= 0:
             return evaluation.best
 
-        viable, losses = cls._viable_candidates(evaluation, preset.maximum_loss)
-        weights = tuple(math.exp(-loss / preset.temperature) for loss in losses)
+        # The best candidate always survives at loss 0, so `viable` is never empty.
+        viable = cls._viable_candidates(evaluation, preset.maximum_loss)
+        moves = tuple(move for move, _ in viable)
+        weights = tuple(math.exp(-loss / preset.temperature) for _, loss in viable)
         seed = f"{evaluation.fen}|{difficulty.value}"
-        return random.Random(seed).choices(viable, weights=weights)[0]
+        return random.Random(seed).choices(moves, weights=weights)[0]
 
     @staticmethod
     def _viable_candidates(
         evaluation: Evaluation,
         maximum_loss: float,
-    ) -> tuple[tuple[Move, ...], tuple[float, ...]]:
+    ) -> tuple[tuple[Move, float], ...]:
+        """Pair each candidate within ``maximum_loss`` of the best with that loss."""
         side = evaluation.side_to_move
-        best_expectation = evaluation.best.wdl.expectation_for(side)
-        candidates: list[Move] = []
-        losses: list[float] = []
-        for candidate in evaluation.candidates:
-            expectation = candidate.wdl.expectation_for(side)
-            loss = max(0.0, best_expectation - expectation)
-            if loss <= maximum_loss:
-                candidates.append(candidate)
-                losses.append(loss)
-        return tuple(candidates), tuple(losses)
+        best = evaluation.best.wdl.expectation_for(side)
+        scored = (
+            (candidate, max(0.0, best - candidate.wdl.expectation_for(side)))
+            for candidate in evaluation.candidates
+        )
+        return tuple((move, loss) for move, loss in scored if loss <= maximum_loss)
