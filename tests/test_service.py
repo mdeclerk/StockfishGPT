@@ -155,8 +155,8 @@ async def test_invalid_persisted_domain_values_are_typed_store_errors() -> None:
     store = LocalGameStore()
     service = ChessService(FirstMoveEngine(), store)
     record = StoredGameState("broken", 0, "impossible", (), (None,))
-    async with locked(store, record.game_id):
-        await store.set(record)
+    async with locked(store, record.game_id) as fence:
+        await store.set(record, fence)
 
     with pytest.raises(StoreDataError, match="difficulty"):
         await service.get_game_state(record.game_id)
@@ -325,11 +325,11 @@ async def test_lost_lock_lease_on_commit_is_a_version_conflict() -> None:
             super().__init__()
             self.sets = 0
 
-        async def set(self, record: StoredGameState) -> None:
+        async def set(self, record: StoredGameState, fence: str) -> None:
             self.sets += 1
             if self.sets > 1:
                 raise GameLeaseLostError("lock lease expired")
-            await super().set(record)
+            await super().set(record, fence)
 
     store = LeaseLosingStore()
     service = ChessService(FirstMoveEngine(), store)

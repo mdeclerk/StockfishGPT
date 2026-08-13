@@ -87,7 +87,6 @@ class RedisGameStore:
         self._lru_key = f"{base}:lru"
         self._clock_key = f"{base}:clock"
         self._lock_prefix = f"{base}:lock:"
-        self._held: dict[str, bytes] = {}
         self._close_client = close_client
 
     @classmethod
@@ -132,40 +131,36 @@ class RedisGameStore:
             return None
         return self._deserialize(payload)
 
-    async def try_lock(self, game_id: str) -> bool:
-        token = secrets.token_bytes(16)
+    async def try_lock(self, game_id: str) -> str | None:
+        fence = secrets.token_urlsafe(16)
         acquired = await self._execute(
             self._client.set(
                 self._lock_key(game_id),
-                token,
+                fence,
                 nx=True,
                 px=_LOCK_TTL_MILLISECONDS,
             )
         )
         if not acquired:
-            return False
-        self._held[game_id] = token
-        return True
+            return None
+        return fence
 
-    async def unlock(self, game_id: str) -> None:
-        token = self._held.pop(game_id, None)
-        if token is None:
-            return
+    async def unlock(self, game_id: str, fence: str) -> None:
         # The lease TTL reclaims a lock whose release did not reach Redis.
+        # The release script only deletes the key if it still holds this
+        # exact fence, so a late unlock() from a caller whose lease already
+        # expired can't clobber whoever's lock replaced it.
         with suppress(StoreUnavailableError):
             await self._execute(
                 self._client.eval(
                     _RELEASE_SCRIPT,
                     1,
                     self._lock_key(game_id),
-                    token,
+                    fence,
                 )
             )
 
-    async def set(self, record: StoredGameState) -> None:
-        token = self._held.get(record.game_id)
-        if token is None:
-            raise RuntimeError("set requires holding the game's try_lock")
+    async def set(self, record: StoredGameState, fence: str) -> None:
         result = await self._execute(
             self._client.eval(
                 _SET_SCRIPT,
@@ -174,7 +169,7 @@ class RedisGameStore:
                 self._lru_key,
                 self._clock_key,
                 self._lock_key(record.game_id),
-                token,
+                fence,
                 self._serialize(record),
                 self._ttl_milliseconds,
                 record.game_id,

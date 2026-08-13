@@ -85,8 +85,8 @@ class ChessService:
             uci_history=(),
             outlooks=(None,),
         )
-        async with self._gate(record.game_id):
-            await self._store.set(record)
+        async with self._gate(record.game_id) as fence:
+            await self._store.set(record, fence)
         return self._snapshot(record, chess.Board())
 
     async def reset_game(
@@ -95,7 +95,7 @@ class ChessService:
         version: int,
         difficulty: Difficulty = Difficulty.CLUB,
     ) -> GameState:
-        async with self._gate(game_id):
+        async with self._gate(game_id) as fence:
             record = await self._get_record(game_id)
             self._require_version(record, version)
             replacement = StoredGameState(
@@ -105,7 +105,7 @@ class ChessService:
                 uci_history=(),
                 outlooks=(None,),
             )
-            await self._commit(replacement, version)
+            await self._commit(replacement, version, fence)
         return self._snapshot(replacement, chess.Board())
 
     async def get_game_state(self, game_id: str) -> GameState:
@@ -118,7 +118,7 @@ class ChessService:
         version: int,
         move_uci: str,
     ) -> GameState:
-        async with self._gate(game_id):
+        async with self._gate(game_id) as fence:
             record = await self._get_record(game_id)
             self._require_version(record, version)
             board = self._board(record)
@@ -147,7 +147,7 @@ class ChessService:
                 uci_history=history,
                 outlooks=outlooks,
             )
-            await self._commit(replacement, version)
+            await self._commit(replacement, version, fence)
         return self._snapshot(replacement, board)
 
     async def analyze_position(self, game_id: str) -> PositionAnalysis:
@@ -163,7 +163,7 @@ class ChessService:
         )
 
     async def undo_white_move(self, game_id: str, version: int) -> GameState:
-        async with self._gate(game_id):
+        async with self._gate(game_id) as fence:
             record = await self._get_record(game_id)
             self._require_version(record, version)
             if not record.uci_history:
@@ -177,7 +177,7 @@ class ChessService:
                 uci_history=record.uci_history[:-plies],
                 outlooks=record.outlooks[:-plies],
             )
-            await self._commit(replacement, version)
+            await self._commit(replacement, version, fence)
         return self._snapshot(replacement, self._board(replacement))
 
     @staticmethod
@@ -185,10 +185,10 @@ class ChessService:
         return secrets.token_urlsafe(24)
 
     @asynccontextmanager
-    async def _gate(self, game_id: str) -> AsyncIterator[None]:
+    async def _gate(self, game_id: str) -> AsyncIterator[str]:
         try:
-            async with locked(self._store, game_id):
-                yield
+            async with locked(self._store, game_id) as fence:
+                yield fence
         except GameLockedError as error:
             raise GameBusyError(game_id) from error
 
@@ -202,9 +202,10 @@ class ChessService:
         self,
         replacement: StoredGameState,
         requested_version: int,
+        fence: str,
     ) -> None:
         try:
-            await self._store.set(replacement)
+            await self._store.set(replacement, fence)
         except GameLeaseLostError as error:
             # A successor may have taken over after our lock lease expired.
             current = await self._store.get(replacement.game_id)

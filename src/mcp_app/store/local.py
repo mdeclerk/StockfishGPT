@@ -1,12 +1,14 @@
 """Process-local game storage."""
 
 import asyncio
+import secrets
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic
 from typing import Self
 
+from .errors import GameLeaseLostError
 from .models import StoredGameState
 
 DEFAULT_GAME_TTL_SECONDS = 3600.0
@@ -38,7 +40,7 @@ class LocalGameStore:
         self._clock = clock
         self._entries: OrderedDict[str, _Entry] = OrderedDict()
         self._lock = asyncio.Lock()
-        self._busy: set[str] = set()
+        self._busy: dict[str, str] = {}
 
     async def __aenter__(self) -> Self:
         return self
@@ -63,20 +65,24 @@ class LocalGameStore:
             self._entries.move_to_end(game_id)
             return entry.record
 
-    async def try_lock(self, game_id: str) -> bool:
+    async def try_lock(self, game_id: str) -> str | None:
         async with self._lock:
             if game_id in self._busy:
-                return False
-            self._busy.add(game_id)
-            return True
+                return None
+            fence = secrets.token_urlsafe(16)
+            self._busy[game_id] = fence
+            return fence
 
-    async def unlock(self, game_id: str) -> None:
+    async def unlock(self, game_id: str, fence: str) -> None:
         async with self._lock:
-            self._busy.discard(game_id)
+            if self._busy.get(game_id) == fence:
+                del self._busy[game_id]
 
-    async def set(self, record: StoredGameState) -> None:
-        if record.game_id not in self._busy:
-            raise RuntimeError("set requires holding the game's try_lock")
+    async def set(self, record: StoredGameState, fence: str) -> None:
+        if self._busy.get(record.game_id) != fence:
+            raise GameLeaseLostError(
+                f"lock lease for game {record.game_id!r} expired before the write"
+            )
         async with self._lock:
             now = self._clock()
             self._purge_expired(now)

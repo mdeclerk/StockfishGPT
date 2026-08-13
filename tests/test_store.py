@@ -76,8 +76,8 @@ async def test_store_contract_set_and_get_roundtrip(kind: str) -> None:
 
         assert isinstance(store, GameStore)
         assert await store.is_ready() is True
-        async with locked(store, "game"):
-            await store.set(original)
+        async with locked(store, "game") as fence:
+            await store.set(original, fence)
         assert await store.get("game") == original
         assert await store.get("missing") is None
 
@@ -88,16 +88,18 @@ async def test_store_contract_try_lock_rejects_overlap_until_released(
     kind: str,
 ) -> None:
     async with fake_backend(kind) as store:
-        assert await store.try_lock("game") is True
-        assert await store.try_lock("game") is False
-        assert await store.try_lock("other") is True
-        await store.unlock("other")
+        fence = await store.try_lock("game")
+        assert fence is not None
+        assert await store.try_lock("game") is None
+        other_fence = await store.try_lock("other")
+        assert other_fence is not None
+        await store.unlock("other", other_fence)
 
         with pytest.raises(GameLockedError, match="busy"):
             async with locked(store, "game"):
                 pass
 
-        await store.unlock("game")
+        await store.unlock("game", fence)
         async with locked(store, "game"):
             pass
 
@@ -133,25 +135,25 @@ async def test_store_contract_try_lock_releases_on_error_and_cancellation(
 @pytest.mark.asyncio
 async def test_store_contract_set_requires_the_game_lock(kind: str) -> None:
     async with fake_backend(kind) as store:
-        with pytest.raises(RuntimeError, match="try_lock"):
-            await store.set(stored_game_state("game"))
+        with pytest.raises(GameLeaseLostError, match="expired"):
+            await store.set(stored_game_state("game"), "not-a-real-fence")
 
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
 @pytest.mark.asyncio
 async def test_store_contract_set_inserts_replaces_and_evicts(kind: str) -> None:
     async with fake_backend(kind, max_games=2) as store:
-        async with locked(store, "first"):
-            await store.set(stored_game_state("first"))
-        async with locked(store, "first"):
-            await store.set(stored_game_state("first", 1))
+        async with locked(store, "first") as fence:
+            await store.set(stored_game_state("first"), fence)
+        async with locked(store, "first") as fence:
+            await store.set(stored_game_state("first", 1), fence)
         assert await store.get("first") == stored_game_state("first", 1)
 
-        async with locked(store, "second"):
-            await store.set(stored_game_state("second"))
+        async with locked(store, "second") as fence:
+            await store.set(stored_game_state("second"), fence)
         assert await store.get("first") is not None
-        async with locked(store, "third"):
-            await store.set(stored_game_state("third"))
+        async with locked(store, "third") as fence:
+            await store.set(stored_game_state("third"), fence)
 
         assert await store.get("second") is None
         assert await store.get("first") == stored_game_state("first", 1)
@@ -165,17 +167,51 @@ async def test_redis_set_is_fenced_against_a_lost_lock_lease() -> None:
     zombie = RedisGameStore(client, namespace="lease-test")
     successor = RedisGameStore(client, namespace="lease-test")
     try:
-        assert await zombie.try_lock("game") is True
+        zombie_fence = await zombie.try_lock("game")
+        assert zombie_fence is not None
         await client.delete(zombie._lock_key("game"))
 
-        async with locked(successor, "game"):
-            await successor.set(stored_game_state("game", 1))
+        async with locked(successor, "game") as successor_fence:
+            await successor.set(stored_game_state("game", 1), successor_fence)
             with pytest.raises(GameLeaseLostError, match="expired"):
-                await zombie.set(stored_game_state("game", 2))
-            await zombie.unlock("game")
-            assert await zombie.try_lock("game") is False
+                await zombie.set(stored_game_state("game", 2), zombie_fence)
+            await zombie.unlock("game", zombie_fence)
+            assert await zombie.try_lock("game") is None
 
         assert await successor.get("game") == stored_game_state("game", 1)
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_redis_zombie_fence_ignored_after_successor_takes_over() -> None:
+    """A single RedisGameStore instance is shared for the whole app (see
+    main.py), so a stalled holder and the successor that re-acquires the
+    same game after its lease expires can both be driven through the same
+    instance. The fence returned by try_lock must be scoped to that one
+    acquisition rather than cached by game_id on the store, otherwise the
+    successor's fence would overwrite the zombie's and the zombie's late
+    unlock()/set() calls would act on the successor's lock by mistake.
+    """
+    server = fakeredis.FakeServer()
+    client = fakeredis.FakeAsyncRedis(server=server)
+    store = RedisGameStore(client, namespace="single-instance-lease-test")
+    try:
+        zombie_fence = await store.try_lock("game")
+        assert zombie_fence is not None
+        await client.delete(store._lock_key("game"))  # simulate lease expiry
+
+        successor_fence = await store.try_lock("game")
+        assert successor_fence is not None
+        assert successor_fence != zombie_fence
+        await store.set(stored_game_state("game", 1), successor_fence)
+
+        with pytest.raises(GameLeaseLostError, match="expired"):
+            await store.set(stored_game_state("game", 2), zombie_fence)
+        await store.unlock("game", zombie_fence)
+
+        assert await store.get("game") == stored_game_state("game", 1)
+        assert await store.try_lock("game") is None  # successor's lock still held
     finally:
         await client.aclose()
 
@@ -204,8 +240,8 @@ async def test_local_store_uses_sliding_expiration_with_an_injected_clock() -> N
     clock = ManualClock()
     store = LocalGameStore(ttl_seconds=10, clock=clock)
     record = stored_game_state("game")
-    async with locked(store, "game"):
-        await store.set(record)
+    async with locked(store, "game") as fence:
+        await store.set(record, fence)
 
     clock.advance(6)
     assert await store.get("game") == record
@@ -295,25 +331,25 @@ async def test_real_redis_shares_state_locks_ttl_and_lru() -> None:
     try:
         async with first_store, second_store:
             original = stored_game_state("original")
-            async with locked(first_store, "original"):
-                await first_store.set(original)
+            async with locked(first_store, "original") as fence:
+                await first_store.set(original, fence)
             assert await second_store.get("original") == original
 
-            async with locked(first_store, "original"):
+            async with locked(first_store, "original") as fence:
                 with pytest.raises(GameLockedError):
                     async with locked(second_store, "original"):
                         pass
-                await first_store.set(stored_game_state("original", 1))
+                await first_store.set(stored_game_state("original", 1), fence)
             replacement = stored_game_state("original", 1)
             assert await second_store.get("original") == replacement
 
             other = stored_game_state("other")
             latest = stored_game_state("latest")
-            async with locked(first_store, "other"):
-                await first_store.set(other)
+            async with locked(first_store, "other") as fence:
+                await first_store.set(other, fence)
             assert await first_store.get("original") is not None
-            async with locked(second_store, "latest"):
-                await second_store.set(latest)
+            async with locked(second_store, "latest") as fence:
+                await second_store.set(latest, fence)
             assert await first_store.get("other") is None
 
             await asyncio.sleep(0.15)
