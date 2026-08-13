@@ -176,13 +176,9 @@ async def test_redis_set_is_fenced_against_a_lost_lock_lease() -> None:
 
 @pytest.mark.asyncio
 async def test_redis_zombie_fence_ignored_after_successor_takes_over() -> None:
-    """A single RedisGameStore instance is shared for the whole app (see
-    main.py), so a stalled holder and the successor that re-acquires the
-    same game after its lease expires can both be driven through the same
-    instance. The fence returned by try_lock must be scoped to that one
-    acquisition rather than cached by game_id on the store, otherwise the
-    successor's fence would overwrite the zombie's and the zombie's late
-    unlock()/set() calls would act on the successor's lock by mistake.
+    """A zombie's late unlock()/set() must not clobber the successor's lock.
+
+    The fence must be scoped per-acquisition, not cached by game_id.
     """
     server = fakeredis.FakeServer()
     client = fakeredis.FakeAsyncRedis(server=server)

@@ -25,14 +25,10 @@ class GameStore(Protocol):
 
 @asynccontextmanager
 async def locked(store: GameStore, game_id: str) -> AsyncIterator[str]:
-    """Hold ``game_id``'s lock for the block, releasing it on exit.
+    """Hold ``game_id``'s lock for the block, yielding the fence token for ``set()``.
 
-    Yields the fence token the caller must pass to ``set()`` to prove it
-    still holds the lock; threading it through the caller's own scope (rather
-    than caching it on the store, keyed only by ``game_id``) keeps two
-    overlapping acquisitions of the same game on one store instance —
-    e.g. a stalled holder and the successor that took over after its lease
-    expired — from being confused with one another.
+    Scoping the fence to the caller, not caching it on the store, keeps a
+    stalled holder from being confused with the successor that took over.
     """
     fence = await store.try_lock(game_id)
     if fence is None:
