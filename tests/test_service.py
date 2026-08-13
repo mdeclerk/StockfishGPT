@@ -267,7 +267,7 @@ async def test_full_history_detects_threefold_repetition() -> None:
 def test_status_detects_fifty_move_rule() -> None:
     board = chess.Board("8/8/8/8/8/5k2/8/R3K3 w Q - 100 51")
 
-    assert ChessService._status(board) is GameStatus.DRAW_FIFTY_MOVE_RULE
+    assert GameStatus.from_board(board) is GameStatus.DRAW_FIFTY_MOVE_RULE
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,8 @@ from typing import Any, Self
 import chess
 import chess.engine
 
+from mcp_app.store import StoreDataError, StoredGameState, StoredOutlook
+
 from .errors import InvalidAnalysisError
 
 _MAXIMUM_VARIATION_PLIES = 6
@@ -17,6 +19,16 @@ class Difficulty(StrEnum):
     CLUB = "club"
     STRONG = "strong"
 
+    @classmethod
+    def from_store(cls, record: StoredGameState) -> Self:
+        """Convert a persisted difficulty, validating it in the process."""
+        try:
+            return cls(record.difficulty)
+        except ValueError as error:
+            raise StoreDataError(
+                f"stored difficulty for game {record.game_id!r} is invalid"
+            ) from error
+
 
 class Side(StrEnum):
     """A chess side."""
@@ -25,7 +37,7 @@ class Side(StrEnum):
     BLACK = "black"
 
     @classmethod
-    def from_stockfish(cls, color: chess.Color) -> Self:
+    def from_engine(cls, color: chess.Color) -> Self:
         """Convert a python-chess color."""
         return cls.WHITE if color == chess.WHITE else cls.BLACK
 
@@ -40,6 +52,25 @@ class GameStatus(StrEnum):
     DRAW_INSUFFICIENT_MATERIAL = "draw_insufficient_material"
     DRAW_FIFTY_MOVE_RULE = "draw_fifty_move_rule"
     DRAW_THREEFOLD_REPETITION = "draw_threefold_repetition"
+
+    @classmethod
+    def from_board(cls, board: chess.Board) -> Self:
+        """Derive the game status from a board position."""
+        if board.is_checkmate():
+            return (
+                cls.BLACK_WINS_CHECKMATE
+                if board.turn == chess.WHITE
+                else cls.WHITE_WINS_CHECKMATE
+            )
+        if board.is_stalemate():
+            return cls.DRAW_STALEMATE
+        if board.is_insufficient_material():
+            return cls.DRAW_INSUFFICIENT_MATERIAL
+        if board.is_fifty_moves():
+            return cls.DRAW_FIFTY_MOVE_RULE
+        if board.is_repetition(3):
+            return cls.DRAW_THREEFOLD_REPETITION
+        return cls.IN_PROGRESS
 
 
 class ServiceStatus(StrEnum):
@@ -65,7 +96,7 @@ class WinDrawLoss:
             raise ValueError("W/D/L total must be positive")
 
     @classmethod
-    def from_stockfish(
+    def from_engine(
         cls,
         raw_wdl: Any,
         white_score: chess.engine.Score,
@@ -82,6 +113,25 @@ class WinDrawLoss:
             white_wins=wdl.wins,
             draws=wdl.draws,
             black_wins=wdl.losses,
+        )
+
+    @classmethod
+    def from_store(cls, stored: StoredOutlook | None) -> Self | None:
+        """Convert a persisted outlook, if one was recorded."""
+        if stored is None:
+            return None
+        return cls(
+            white_wins=stored.white_wins,
+            draws=stored.draws,
+            black_wins=stored.black_wins,
+        )
+
+    def to_store(self) -> StoredOutlook:
+        """Convert to the persisted representation."""
+        return StoredOutlook(
+            white_wins=self.white_wins,
+            draws=self.draws,
+            black_wins=self.black_wins,
         )
 
     @property
@@ -118,7 +168,7 @@ class Move:
     principal_variation: tuple[VariationMove, ...]
 
     @classmethod
-    def from_stockfish(
+    def from_engine(
         cls,
         board: chess.Board,
         info: chess.engine.InfoDict,
@@ -137,9 +187,7 @@ class Move:
             move_san=board.san(variation[0]),
             centipawns=white_score.score(),
             mate_in=white_score.mate(),
-            wdl=WinDrawLoss.from_stockfish(
-                info.get("wdl"), white_score, board.ply()
-            ),
+            wdl=WinDrawLoss.from_engine(info.get("wdl"), white_score, board.ply()),
             principal_variation=cls._variation(board, variation),
         )
 
@@ -171,18 +219,18 @@ class Evaluation:
     candidates: tuple[Move, ...]
 
     @classmethod
-    def from_stockfish(
+    def from_engine(
         cls,
         board: chess.Board,
         infos: list[chess.engine.InfoDict],
     ) -> Self:
         """Convert a complete Stockfish analysis."""
-        candidates = tuple(Move.from_stockfish(board, info) for info in infos)
+        candidates = tuple(Move.from_engine(board, info) for info in infos)
         if not candidates:
             raise InvalidAnalysisError("no candidate moves returned")
         return cls(
             fen=board.fen(en_passant="fen"),
-            side_to_move=Side.from_stockfish(board.turn),
+            side_to_move=Side.from_engine(board.turn),
             candidates=candidates,
         )
 
@@ -206,6 +254,34 @@ class GameState:
     uci_history: tuple[str, ...]
     san_history: tuple[str, ...]
     outlook: WinDrawLoss | None
+
+    @classmethod
+    def from_store(cls, record: StoredGameState, board: chess.Board) -> Self:
+        """Convert a stored record and its replayed board into a snapshot."""
+        uci_history, san_history = cls._histories(board)
+        return cls(
+            game_id=record.game_id,
+            version=record.version,
+            difficulty=Difficulty.from_store(record),
+            fen=board.fen(en_passant="fen"),
+            side_to_move=Side.from_engine(board.turn),
+            status=GameStatus.from_board(board),
+            is_in_check=board.is_check(),
+            legal_moves=tuple(move.uci() for move in board.legal_moves),
+            uci_history=uci_history,
+            san_history=san_history,
+            outlook=WinDrawLoss.from_store(record.outlooks[-1]),
+        )
+
+    @staticmethod
+    def _histories(board: chess.Board) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        replay = board.root()
+        uci_history: list[str] = []
+        san_history: list[str] = []
+        for move in board.move_stack:
+            uci_history.append(move.uci())
+            san_history.append(replay.san_and_push(move))
+        return tuple(uci_history), tuple(san_history)
 
     @property
     def ply_count(self) -> int:

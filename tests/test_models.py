@@ -50,14 +50,14 @@ def test_wdl_rejects_invalid_values(values: tuple[int, int, int]) -> None:
         WinDrawLoss(*values)
 
 
-def test_every_python_chess_conversion_uses_from_stockfish() -> None:
+def test_every_python_chess_conversion_uses_from_engine() -> None:
     board = chess.Board(AFTER_E4_FEN)
-    evaluation = Evaluation.from_stockfish(
+    evaluation = Evaluation.from_engine(
         board,
         [info("e7e5", white_wdl=(250, 400, 350))],
     )
 
-    assert Side.from_stockfish(chess.BLACK) is Side.BLACK
+    assert Side.from_engine(chess.BLACK) is Side.BLACK
     assert evaluation.best.move_uci == "e7e5"
     assert evaluation.best.wdl.black_wins == 350
 
@@ -65,7 +65,7 @@ def test_every_python_chess_conversion_uses_from_stockfish() -> None:
 def test_move_carries_both_notations_and_white_perspective() -> None:
     board = chess.Board(AFTER_E4_FEN)
 
-    move = Move.from_stockfish(
+    move = Move.from_engine(
         board,
         info("e7e5", centipawns=10, white_wdl=(250, 400, 350)),
     )
@@ -79,13 +79,13 @@ def test_move_carries_both_notations_and_white_perspective() -> None:
 
 
 def test_missing_wdl_falls_back_to_stockfish_score_model() -> None:
-    move = Move.from_stockfish(chess.Board(START_FEN), info("e2e4"))
+    move = Move.from_engine(chess.Board(START_FEN), info("e2e4"))
 
     assert move.wdl.total == 1000
 
 
 def test_principal_variation_is_capped_at_six_plies() -> None:
-    move = Move.from_stockfish(
+    move = Move.from_engine(
         chess.Board(START_FEN),
         info("e2e4", "e7e5", "g1f3", "b8c6", "f1c4", "g8f6", "e1g1"),
     )
@@ -119,18 +119,18 @@ def test_incomplete_stockfish_candidate_is_rejected(
     broken: chess.engine.InfoDict,
 ) -> None:
     with pytest.raises(InvalidAnalysisError, match="missing a score or principal"):
-        Move.from_stockfish(chess.Board(START_FEN), broken)
+        Move.from_engine(chess.Board(START_FEN), broken)
 
 
 def test_illegal_principal_variation_is_rejected() -> None:
     with pytest.raises(InvalidAnalysisError, match="illegal move"):
-        Move.from_stockfish(
+        Move.from_engine(
             chess.Board(START_FEN), info("e2e4", "e2e4")
         )
 
 
 def test_evaluation_normalizes_fen_and_orders_candidates() -> None:
-    evaluation = Evaluation.from_stockfish(
+    evaluation = Evaluation.from_engine(
         chess.Board(AFTER_E4_FEN),
         [
             info("e7e5", white_wdl=(250, 400, 350)),
@@ -145,11 +145,11 @@ def test_evaluation_normalizes_fen_and_orders_candidates() -> None:
 
 def test_empty_stockfish_analysis_is_rejected() -> None:
     with pytest.raises(InvalidAnalysisError, match="no candidate moves"):
-        Evaluation.from_stockfish(chess.Board(START_FEN), [])
+        Evaluation.from_engine(chess.Board(START_FEN), [])
 
 
 def test_mcp_schemas_convert_domain_models_and_remain_frozen() -> None:
-    evaluation = Evaluation.from_stockfish(
+    evaluation = Evaluation.from_engine(
         chess.Board(AFTER_E4_FEN),
         [info("e7e5", white_wdl=(250, 400, 350))],
     )

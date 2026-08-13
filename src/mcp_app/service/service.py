@@ -16,7 +16,6 @@ from mcp_app.store import (
     GameStore,
     StoreDataError,
     StoredGameState,
-    StoredOutlook,
     locked,
 )
 
@@ -37,8 +36,6 @@ from .models import (
     Move,
     PositionAnalysis,
     ServiceStatus,
-    Side,
-    WinDrawLoss,
 )
 
 _ADVICE_CANDIDATES = 3
@@ -87,7 +84,7 @@ class ChessService:
         )
         async with self._gate(record.game_id) as fence:
             await self._store.set(record, fence)
-        return self._snapshot(record, chess.Board())
+        return GameState.from_store(record, chess.Board())
 
     async def reset_game(
         self,
@@ -106,11 +103,11 @@ class ChessService:
                 outlooks=(None,),
             )
             await self._commit(replacement, version, fence)
-        return self._snapshot(replacement, chess.Board())
+        return GameState.from_store(replacement, chess.Board())
 
     async def get_game_state(self, game_id: str) -> GameState:
         record = await self._get_record(game_id)
-        return self._snapshot(record, self._board(record))
+        return GameState.from_store(record, self._board(record))
 
     async def play_white_move(
         self,
@@ -122,7 +119,7 @@ class ChessService:
             record = await self._get_record(game_id)
             self._require_version(record, version)
             board = self._board(record)
-            if self._status(board) is not GameStatus.IN_PROGRESS:
+            if GameStatus.from_board(board) is not GameStatus.IN_PROGRESS:
                 raise TerminalPositionError(board.fen(en_passant="fen"))
             if board.turn != chess.WHITE:
                 raise NotPlayersTurnError()
@@ -131,14 +128,14 @@ class ChessService:
             board.push(move)
             history = (*record.uci_history, move.uci())
             outlooks = (*record.outlooks, record.outlooks[-1])
-            difficulty = self._difficulty(record)
+            difficulty = Difficulty.from_store(record)
 
-            if self._status(board) is GameStatus.IN_PROGRESS:
+            if GameStatus.from_board(board) is GameStatus.IN_PROGRESS:
                 evaluation = await self._analyze_move(board, difficulty)
                 reply = self._choose(evaluation, difficulty)
                 board.push(chess.Move.from_uci(reply.move_uci))
                 history = (*history, reply.move_uci)
-                outlooks = (*outlooks, self._store_outlook(reply.wdl))
+                outlooks = (*outlooks, reply.wdl.to_store())
 
             replacement = StoredGameState(
                 game_id=record.game_id,
@@ -148,17 +145,17 @@ class ChessService:
                 outlooks=outlooks,
             )
             await self._commit(replacement, version, fence)
-        return self._snapshot(replacement, board)
+        return GameState.from_store(replacement, board)
 
     async def analyze_position(self, game_id: str) -> PositionAnalysis:
         async with self._gate(game_id):
             record = await self._get_record(game_id)
             board = self._board(record)
-            if self._status(board) is not GameStatus.IN_PROGRESS:
+            if GameStatus.from_board(board) is not GameStatus.IN_PROGRESS:
                 raise TerminalPositionError(board.fen(en_passant="fen"))
             evaluation = await self._analyze_position(board)
         return PositionAnalysis(
-            game=self._snapshot(record, board),
+            game=GameState.from_store(record, board),
             candidates=evaluation.candidates,
         )
 
@@ -178,7 +175,7 @@ class ChessService:
                 outlooks=record.outlooks[:-plies],
             )
             await self._commit(replacement, version, fence)
-        return self._snapshot(replacement, self._board(replacement))
+        return GameState.from_store(replacement, self._board(replacement))
 
     @staticmethod
     def _new_game_id() -> str:
@@ -235,15 +232,6 @@ class ChessService:
         return board
 
     @staticmethod
-    def _difficulty(record: StoredGameState) -> Difficulty:
-        try:
-            return Difficulty(record.difficulty)
-        except ValueError as error:
-            raise StoreDataError(
-                f"stored difficulty for game {record.game_id!r} is invalid"
-            ) from error
-
-    @staticmethod
     def _legal_move(board: chess.Board, move_uci: str) -> chess.Move:
         try:
             return board.parse_uci(move_uci)
@@ -256,7 +244,7 @@ class ChessService:
             multipv=_ADVICE_CANDIDATES,
             nodes=_ANALYSIS_NODES,
         )
-        return Evaluation.from_stockfish(board, infos)
+        return Evaluation.from_engine(board, infos)
 
     async def _analyze_move(
         self,
@@ -268,70 +256,7 @@ class ChessService:
             multipv=_PRESETS[difficulty].candidates,
             nodes=_MOVE_NODES,
         )
-        return Evaluation.from_stockfish(board, infos)
-
-    @classmethod
-    def _snapshot(cls, record: StoredGameState, board: chess.Board) -> GameState:
-        uci_history, san_history = cls._histories(board)
-        return GameState(
-            game_id=record.game_id,
-            version=record.version,
-            difficulty=cls._difficulty(record),
-            fen=board.fen(en_passant="fen"),
-            side_to_move=Side.from_stockfish(board.turn),
-            status=cls._status(board),
-            is_in_check=board.is_check(),
-            legal_moves=tuple(move.uci() for move in board.legal_moves),
-            uci_history=uci_history,
-            san_history=san_history,
-            outlook=cls._service_outlook(record.outlooks[-1]),
-        )
-
-    @staticmethod
-    def _store_outlook(outlook: WinDrawLoss) -> StoredOutlook:
-        return StoredOutlook(
-            white_wins=outlook.white_wins,
-            draws=outlook.draws,
-            black_wins=outlook.black_wins,
-        )
-
-    @staticmethod
-    def _service_outlook(outlook: StoredOutlook | None) -> WinDrawLoss | None:
-        if outlook is None:
-            return None
-        return WinDrawLoss(
-            white_wins=outlook.white_wins,
-            draws=outlook.draws,
-            black_wins=outlook.black_wins,
-        )
-
-    @staticmethod
-    def _histories(board: chess.Board) -> tuple[tuple[str, ...], tuple[str, ...]]:
-        replay = board.root()
-        uci_history: list[str] = []
-        san_history: list[str] = []
-        for move in board.move_stack:
-            uci_history.append(move.uci())
-            san_history.append(replay.san_and_push(move))
-        return tuple(uci_history), tuple(san_history)
-
-    @staticmethod
-    def _status(board: chess.Board) -> GameStatus:
-        if board.is_checkmate():
-            return (
-                GameStatus.BLACK_WINS_CHECKMATE
-                if board.turn == chess.WHITE
-                else GameStatus.WHITE_WINS_CHECKMATE
-            )
-        if board.is_stalemate():
-            return GameStatus.DRAW_STALEMATE
-        if board.is_insufficient_material():
-            return GameStatus.DRAW_INSUFFICIENT_MATERIAL
-        if board.is_fifty_moves():
-            return GameStatus.DRAW_FIFTY_MOVE_RULE
-        if board.is_repetition(3):
-            return GameStatus.DRAW_THREEFOLD_REPETITION
-        return GameStatus.IN_PROGRESS
+        return Evaluation.from_engine(board, infos)
 
     @classmethod
     def _choose(cls, evaluation: Evaluation, difficulty: Difficulty) -> Move:
