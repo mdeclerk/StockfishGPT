@@ -1,6 +1,9 @@
 """Redis-backed game storage."""
 
 import json
+import secrets
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager, suppress
 from typing import Any, Self
 
 from redis.asyncio import Redis
@@ -8,9 +11,16 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
-from .errors import StoreDataError, StoreUnavailableError
+from .errors import (
+    GameLeaseLostError,
+    GameLockedError,
+    StoreDataError,
+    StoreUnavailableError,
+)
 from .local import DEFAULT_GAME_TTL_SECONDS, DEFAULT_MAX_GAMES
 from .models import StoredGameState, StoredOutlook
+
+DEFAULT_LOCK_TTL_SECONDS = 30.0
 
 _SCHEMA_VERSION = 1
 
@@ -80,6 +90,37 @@ return 1
 """
 
 
+_RELEASE_SCRIPT = """
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+    redis.call('DEL', KEYS[1])
+end
+return 1
+"""
+
+_SET_SCRIPT = """
+if redis.call('GET', KEYS[4]) ~= ARGV[1] then
+    return 0
+end
+redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
+local now = redis.call('TIME')
+local score = now[1] * 1000000 + now[2]
+local previous = tonumber(redis.call('GET', KEYS[3]) or '0')
+if score <= previous then
+    score = previous + 1
+end
+redis.call('SET', KEYS[3], score)
+redis.call('ZADD', KEYS[2], score, ARGV[4])
+while redis.call('ZCARD', KEYS[2]) > tonumber(ARGV[5]) do
+    local evicted = redis.call('ZRANGE', KEYS[2], 0, 0)
+    if #evicted > 0 then
+        redis.call('ZREM', KEYS[2], evicted[1])
+        redis.call('DEL', ARGV[6] .. evicted[1])
+    end
+end
+return 1
+"""
+
+
 class RedisGameStore:
     """Shared Redis store with atomic CAS, sliding TTL, and global LRU."""
 
@@ -105,6 +146,11 @@ class RedisGameStore:
         self._record_prefix = f"{base}:record:"
         self._lru_key = f"{base}:lru"
         self._clock_key = f"{base}:clock"
+        self._lock_prefix = f"{base}:lock:"
+        self._lock_ttl_milliseconds = max(
+            1, round(DEFAULT_LOCK_TTL_SECONDS * 1000)
+        )
+        self._held: dict[str, bytes] = {}
         self._close_client = close_client
 
     @classmethod
@@ -167,6 +213,60 @@ class RedisGameStore:
             return None
         return self._deserialize(payload)
 
+    @asynccontextmanager
+    async def try_lock(self, game_id: str) -> AsyncIterator[None]:
+        token = secrets.token_bytes(16)
+        acquired = await self._execute(
+            self._client.set(
+                self._lock_key(game_id),
+                token,
+                nx=True,
+                px=self._lock_ttl_milliseconds,
+            )
+        )
+        if not acquired:
+            raise GameLockedError(f"game {game_id!r} is busy")
+        self._held[game_id] = token
+        try:
+            yield
+        finally:
+            self._held.pop(game_id, None)
+            # The lease TTL reclaims a lock whose release did not reach Redis.
+            with suppress(StoreUnavailableError):
+                await self._execute(
+                    self._client.eval(
+                        _RELEASE_SCRIPT,
+                        1,
+                        self._lock_key(game_id),
+                        token,
+                    )
+                )
+
+    async def set(self, record: StoredGameState) -> None:
+        token = self._held.get(record.game_id)
+        if token is None:
+            raise RuntimeError("set requires holding the game's try_lock")
+        result = await self._execute(
+            self._client.eval(
+                _SET_SCRIPT,
+                4,
+                self._record_key(record.game_id),
+                self._lru_key,
+                self._clock_key,
+                self._lock_key(record.game_id),
+                token,
+                self._serialize(record),
+                self._ttl_milliseconds,
+                record.game_id,
+                self._max_games,
+                self._record_prefix,
+            )
+        )
+        if not result:
+            raise GameLeaseLostError(
+                f"lock lease for game {record.game_id!r} expired before the write"
+            )
+
     async def compare_and_set(
         self,
         expected: StoredGameState,
@@ -191,6 +291,9 @@ class RedisGameStore:
 
     def _record_key(self, game_id: str) -> str:
         return f"{self._record_prefix}{game_id}"
+
+    def _lock_key(self, game_id: str) -> str:
+        return f"{self._lock_prefix}{game_id}"
 
     @staticmethod
     async def _execute(awaitable: Any) -> Any:

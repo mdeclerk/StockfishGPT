@@ -2,11 +2,13 @@
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from time import monotonic
 from typing import Self
 
+from .errors import GameLockedError
 from .models import StoredGameState
 
 DEFAULT_GAME_TTL_SECONDS = 3600.0
@@ -38,6 +40,7 @@ class LocalGameStore:
         self._clock = clock
         self._entries: OrderedDict[str, _Entry] = OrderedDict()
         self._lock = asyncio.Lock()
+        self._busy: set[str] = set()
 
     async def __aenter__(self) -> Self:
         return self
@@ -72,6 +75,27 @@ class LocalGameStore:
             entry.last_access = now
             self._entries.move_to_end(game_id)
             return entry.record
+
+    @asynccontextmanager
+    async def try_lock(self, game_id: str) -> AsyncIterator[None]:
+        if game_id in self._busy:
+            raise GameLockedError(f"game {game_id!r} is busy")
+        self._busy.add(game_id)
+        try:
+            yield
+        finally:
+            self._busy.discard(game_id)
+
+    async def set(self, record: StoredGameState) -> None:
+        if record.game_id not in self._busy:
+            raise RuntimeError("set requires holding the game's try_lock")
+        async with self._lock:
+            now = self._clock()
+            self._purge_expired(now)
+            self._entries[record.game_id] = _Entry(record, now)
+            self._entries.move_to_end(record.game_id)
+            while len(self._entries) > self._max_games:
+                self._entries.popitem(last=False)
 
     async def compare_and_set(
         self,

@@ -19,7 +19,13 @@ from mcp_app.service.errors import (
     PositionError,
     TerminalPositionError,
 )
-from mcp_app.store.errors import StoreDataError, StoreError, StoreUnavailableError
+from mcp_app.store.errors import (
+    GameLeaseLostError,
+    GameLockedError,
+    StoreDataError,
+    StoreError,
+    StoreUnavailableError,
+)
 
 
 @pytest.mark.parametrize(
@@ -37,6 +43,8 @@ from mcp_app.store.errors import StoreDataError, StoreError, StoreUnavailableErr
         (EngineRestartingError, EngineUnavailableError),
         (StoreDataError, StoreError),
         (StoreUnavailableError, StoreError),
+        (GameLockedError, StoreError),
+        (GameLeaseLostError, StoreError),
     ],
 )
 def test_errors_belong_to_their_layered_branches(

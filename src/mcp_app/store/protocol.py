@@ -1,5 +1,6 @@
 """Game-store capability consumed by the chess service."""
 
+from contextlib import AbstractAsyncContextManager
 from typing import Protocol, runtime_checkable
 
 from .models import StoredGameState
@@ -7,7 +8,7 @@ from .models import StoredGameState
 
 @runtime_checkable
 class GameStore(Protocol):
-    """Atomic storage for authoritative stored game states."""
+    """Atomic storage and per-game mutual exclusion for stored game states."""
 
     async def create(self, record: StoredGameState) -> bool: ...
 
@@ -18,5 +19,9 @@ class GameStore(Protocol):
         expected: StoredGameState,
         replacement: StoredGameState,
     ) -> bool: ...
+
+    async def set(self, record: StoredGameState) -> None: ...
+
+    def try_lock(self, game_id: str) -> AbstractAsyncContextManager[None]: ...
 
     async def is_ready(self) -> bool: ...
