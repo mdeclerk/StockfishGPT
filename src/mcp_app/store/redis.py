@@ -5,6 +5,7 @@ import secrets
 from contextlib import suppress
 from typing import Any, Self
 
+from pydantic import TypeAdapter
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import RedisError
@@ -16,12 +17,13 @@ from .errors import (
     StoreUnavailableError,
 )
 from .local import DEFAULT_GAME_TTL_SECONDS, DEFAULT_MAX_GAMES
-from .models import StoredGameState, StoredOutlook
+from .models import StoredGameState
 
 DEFAULT_LOCK_TTL_SECONDS = 30.0
 _LOCK_TTL_MILLISECONDS = max(1, round(DEFAULT_LOCK_TTL_SECONDS * 1000))
 
 _SCHEMA_VERSION = 1
+_RECORD_ADAPTER: TypeAdapter[StoredGameState] = TypeAdapter(StoredGameState)
 
 # A Redis-side Lua script runs atomically and single-threaded, so successive
 # INCR calls on KEYS[3] are already strictly ordered — no need to derive a
@@ -197,23 +199,8 @@ class RedisGameStore:
 
     @staticmethod
     def _serialize(record: StoredGameState) -> bytes:
-        data = {
-            "difficulty": record.difficulty,
-            "game_id": record.game_id,
-            "outlooks": [
-                None
-                if outlook is None
-                else {
-                    "black_wins": outlook.black_wins,
-                    "draws": outlook.draws,
-                    "white_wins": outlook.white_wins,
-                }
-                for outlook in record.outlooks
-            ],
-            "schema": _SCHEMA_VERSION,
-            "uci_history": list(record.uci_history),
-            "version": record.version,
-        }
+        data = _RECORD_ADAPTER.dump_python(record, mode="json")
+        data["schema"] = _SCHEMA_VERSION
         return json.dumps(
             data,
             ensure_ascii=False,
@@ -221,56 +208,15 @@ class RedisGameStore:
             sort_keys=True,
         ).encode()
 
-    @classmethod
-    def _deserialize(cls, payload: bytes | str) -> StoredGameState:
+    @staticmethod
+    def _deserialize(payload: bytes | str) -> StoredGameState:
         try:
             data = json.loads(payload)
-            if not isinstance(data, dict) or data.get("schema") != _SCHEMA_VERSION:
-                raise ValueError("unsupported stored-game-state schema")
-            game_id = cls._string(data, "game_id")
-            version = cls._integer(data, "version")
-            difficulty = cls._string(data, "difficulty")
-            raw_history = data["uci_history"]
-            raw_outlooks = data["outlooks"]
-            if not isinstance(raw_history, list) or not all(
-                isinstance(move, str) for move in raw_history
-            ):
-                raise ValueError("uci_history must be a list of strings")
-            if not isinstance(raw_outlooks, list):
-                raise ValueError("outlooks must be a list")
-            outlooks = tuple(cls._deserialize_outlook(value) for value in raw_outlooks)
-            return StoredGameState(
-                game_id=game_id,
-                version=version,
-                difficulty=difficulty,
-                uci_history=tuple(raw_history),
-                outlooks=outlooks,
+            is_current_schema = (
+                isinstance(data, dict) and data.pop("schema", None) == _SCHEMA_VERSION
             )
-        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as error:
+            if not is_current_schema:
+                raise ValueError("unsupported stored-game-state schema")
+            return _RECORD_ADAPTER.validate_python(data)
+        except (TypeError, ValueError, json.JSONDecodeError) as error:
             raise StoreDataError("stored game state is malformed") from error
-
-    @staticmethod
-    def _string(data: dict[str, Any], name: str) -> str:
-        value = data[name]
-        if not isinstance(value, str):
-            raise ValueError(f"{name} must be a string")
-        return value
-
-    @staticmethod
-    def _integer(data: dict[str, Any], name: str) -> int:
-        value = data[name]
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError(f"{name} must be an integer")
-        return value
-
-    @classmethod
-    def _deserialize_outlook(cls, value: Any) -> StoredOutlook | None:
-        if value is None:
-            return None
-        if not isinstance(value, dict):
-            raise ValueError("outlook must be an object or null")
-        return StoredOutlook(
-            white_wins=cls._integer(value, "white_wins"),
-            draws=cls._integer(value, "draws"),
-            black_wins=cls._integer(value, "black_wins"),
-        )
