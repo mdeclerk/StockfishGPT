@@ -16,7 +16,7 @@ from .errors import (
     StoreDataError,
     StoreUnavailableError,
 )
-from .local import DEFAULT_GAME_TTL_SECONDS, DEFAULT_MAX_GAMES
+from .local import DEFAULT_GAME_TTL_SECONDS
 from .models import StoredGameState
 
 DEFAULT_LOCK_TTL_SECONDS = 30.0
@@ -24,20 +24,6 @@ _LOCK_TTL_MILLISECONDS = max(1, round(DEFAULT_LOCK_TTL_SECONDS * 1000))
 
 _SCHEMA_VERSION = 1
 _RECORD_ADAPTER: TypeAdapter[StoredGameState] = TypeAdapter(StoredGameState)
-
-# A Redis-side Lua script runs atomically and single-threaded, so successive
-# INCR calls on KEYS[3] are already strictly ordered — no need to derive a
-# score from wall-clock TIME to break ties.
-_GET_SCRIPT = """
-local value = redis.call('GET', KEYS[1])
-if not value then
-    redis.call('ZREM', KEYS[2], ARGV[2])
-    return false
-end
-redis.call('PEXPIRE', KEYS[1], ARGV[1])
-redis.call('ZADD', KEYS[2], redis.call('INCR', KEYS[3]), ARGV[2])
-return value
-"""
 
 _RELEASE_SCRIPT = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -47,47 +33,33 @@ return 1
 """
 
 _SET_SCRIPT = """
-if redis.call('GET', KEYS[4]) ~= ARGV[1] then
+if redis.call('GET', KEYS[2]) ~= ARGV[1] then
     return 0
 end
 redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
-redis.call('ZADD', KEYS[2], redis.call('INCR', KEYS[3]), ARGV[4])
-while redis.call('ZCARD', KEYS[2]) > tonumber(ARGV[5]) do
-    local evicted = redis.call('ZRANGE', KEYS[2], 0, 0)
-    if #evicted > 0 then
-        redis.call('ZREM', KEYS[2], evicted[1])
-        redis.call('DEL', ARGV[6] .. evicted[1])
-    end
-end
 return 1
 """
 
 
 class RedisGameStore:
-    """Shared Redis store with per-game locks, fenced writes, and global LRU."""
+    """Shared Redis store with per-game locks, fenced writes, and sliding TTLs."""
 
     def __init__(
         self,
         client: Redis,
         *,
         ttl_seconds: float = DEFAULT_GAME_TTL_SECONDS,
-        max_games: int = DEFAULT_MAX_GAMES,
         namespace: str = "stockfish-gpt",
         close_client: bool = False,
     ) -> None:
         if ttl_seconds <= 0:
             raise ValueError("ttl_seconds must be positive")
-        if max_games < 1:
-            raise ValueError("max_games must be positive")
         if not namespace:
             raise ValueError("namespace must not be empty")
         self._client = client
         self._ttl_milliseconds = max(1, round(ttl_seconds * 1000))
-        self._max_games = max_games
         base = f"{namespace}:{{games}}"
         self._record_prefix = f"{base}:record:"
-        self._lru_key = f"{base}:lru"
-        self._clock_key = f"{base}:clock"
         self._lock_prefix = f"{base}:lock:"
         self._close_client = close_client
 
@@ -119,15 +91,7 @@ class RedisGameStore:
 
     async def get(self, game_id: str) -> StoredGameState | None:
         payload = await self._execute(
-            self._client.eval(
-                _GET_SCRIPT,
-                3,
-                self._record_key(game_id),
-                self._lru_key,
-                self._clock_key,
-                self._ttl_milliseconds,
-                game_id,
-            )
+            self._client.getex(self._record_key(game_id), px=self._ttl_milliseconds)
         )
         if payload is None:
             return None
@@ -166,17 +130,12 @@ class RedisGameStore:
         result = await self._execute(
             self._client.eval(
                 _SET_SCRIPT,
-                4,
+                2,
                 self._record_key(record.game_id),
-                self._lru_key,
-                self._clock_key,
                 self._lock_key(record.game_id),
                 fence,
                 self._serialize(record),
                 self._ttl_milliseconds,
-                record.game_id,
-                self._max_games,
-                self._record_prefix,
             )
         )
         if not result:

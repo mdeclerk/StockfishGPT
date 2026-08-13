@@ -383,20 +383,3 @@ async def test_start_game_sweeps_expired_games() -> None:
         await service.get_game_state(stale.game_id)
     assert await service.get_game_state(fresh.game_id) == fresh
     assert await service.get_game_state(replacement.game_id) == replacement
-
-
-@pytest.mark.asyncio
-async def test_start_game_evicts_least_recently_used_game_at_cap(
-) -> None:
-    store = LocalGameStore(max_games=2)
-    service = ChessService(FirstMoveEngine(), store)
-    oldest = await service.start_game()
-    newest = await service.start_game()
-
-    await service.get_game_state(newest.game_id)
-    replacement = await service.start_game()
-
-    with pytest.raises(GameNotFoundError):
-        await service.get_game_state(oldest.game_id)
-    assert await service.get_game_state(newest.game_id) == newest
-    assert await service.get_game_state(replacement.game_id) == replacement

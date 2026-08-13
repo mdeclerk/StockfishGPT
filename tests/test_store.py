@@ -49,20 +49,16 @@ def stored_game_state(game_id: str, version: int = 0) -> StoredGameState:
 
 
 @asynccontextmanager
-async def fake_backend(
-    kind: str,
-    *,
-    max_games: int = 1024,
-) -> AsyncIterator[GameStore]:
+async def fake_backend(kind: str) -> AsyncIterator[GameStore]:
     if kind == "local":
-        async with LocalGameStore(max_games=max_games) as store:
+        async with LocalGameStore() as store:
             yield store
         return
 
     server = fakeredis.FakeServer()
     client = fakeredis.FakeAsyncRedis(server=server)
     try:
-        async with RedisGameStore(client, max_games=max_games) as store:
+        async with RedisGameStore(client) as store:
             yield store
     finally:
         await client.aclose()
@@ -141,8 +137,8 @@ async def test_store_contract_set_requires_the_game_lock(kind: str) -> None:
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
 @pytest.mark.asyncio
-async def test_store_contract_set_inserts_replaces_and_evicts(kind: str) -> None:
-    async with fake_backend(kind, max_games=2) as store:
+async def test_store_contract_set_inserts_and_replaces(kind: str) -> None:
+    async with fake_backend(kind) as store:
         async with locked(store, "first") as fence:
             await store.set(stored_game_state("first"), fence)
         async with locked(store, "first") as fence:
@@ -151,13 +147,8 @@ async def test_store_contract_set_inserts_replaces_and_evicts(kind: str) -> None
 
         async with locked(store, "second") as fence:
             await store.set(stored_game_state("second"), fence)
-        assert await store.get("first") is not None
-        async with locked(store, "third") as fence:
-            await store.set(stored_game_state("third"), fence)
-
-        assert await store.get("second") is None
         assert await store.get("first") == stored_game_state("first", 1)
-        assert await store.get("third") == stored_game_state("third")
+        assert await store.get("second") == stored_game_state("second")
 
 
 @pytest.mark.asyncio
@@ -311,23 +302,13 @@ async def test_owned_redis_client_is_closed_when_startup_fails() -> None:
     TEST_REDIS_URL is None,
     reason="set TEST_REDIS_URL to exercise a real Redis server",
 )
-async def test_real_redis_shares_state_locks_ttl_and_lru() -> None:
+async def test_real_redis_shares_state_locks_and_ttl() -> None:
     assert TEST_REDIS_URL is not None
     namespace = f"stockfish-gpt-test-{uuid.uuid4().hex}"
     first_client = Redis.from_url(TEST_REDIS_URL, decode_responses=False)
     second_client = Redis.from_url(TEST_REDIS_URL, decode_responses=False)
-    first_store = RedisGameStore(
-        first_client,
-        namespace=namespace,
-        ttl_seconds=0.25,
-        max_games=2,
-    )
-    second_store = RedisGameStore(
-        second_client,
-        namespace=namespace,
-        ttl_seconds=0.25,
-        max_games=2,
-    )
+    first_store = RedisGameStore(first_client, namespace=namespace, ttl_seconds=0.25)
+    second_store = RedisGameStore(second_client, namespace=namespace, ttl_seconds=0.25)
     try:
         async with first_store, second_store:
             original = stored_game_state("original")
@@ -343,21 +324,12 @@ async def test_real_redis_shares_state_locks_ttl_and_lru() -> None:
             replacement = stored_game_state("original", 1)
             assert await second_store.get("original") == replacement
 
-            other = stored_game_state("other")
-            latest = stored_game_state("latest")
-            async with locked(first_store, "other") as fence:
-                await first_store.set(other, fence)
-            assert await first_store.get("original") is not None
-            async with locked(second_store, "latest") as fence:
-                await second_store.set(latest, fence)
-            assert await first_store.get("other") is None
-
             await asyncio.sleep(0.15)
-            assert await second_store.get("latest") == latest
+            assert await second_store.get("original") == replacement
             await asyncio.sleep(0.15)
-            assert await first_store.get("latest") == latest
+            assert await first_store.get("original") == replacement
             await asyncio.sleep(0.3)
-            assert await first_store.get("latest") is None
+            assert await first_store.get("original") is None
     finally:
         keys = [key async for key in first_client.scan_iter(f"{namespace}:*")]
         if keys:
