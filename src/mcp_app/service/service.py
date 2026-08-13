@@ -1,7 +1,7 @@
 """Store-backed chess games and Stockfish-backed behavior."""
 
-import hashlib
 import math
+import random
 import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -342,7 +342,7 @@ class ChessService:
         viable, losses = cls._viable_candidates(evaluation, preset.maximum_loss)
         weights = tuple(math.exp(-loss / preset.temperature) for loss in losses)
         seed = f"{evaluation.fen}|{difficulty.value}"
-        return cls._weighted_pick(viable, weights, seed)
+        return random.Random(seed).choices(viable, weights=weights)[0]
 
     @staticmethod
     def _viable_candidates(
@@ -360,19 +360,3 @@ class ChessService:
                 candidates.append(candidate)
                 losses.append(loss)
         return tuple(candidates), tuple(losses)
-
-    @staticmethod
-    def _weighted_pick(
-        candidates: tuple[Move, ...],
-        weights: tuple[float, ...],
-        seed: str,
-    ) -> Move:
-        total = sum(weights)
-        digest = hashlib.sha256(seed.encode()).digest()
-        point = int.from_bytes(digest[:8]) / 2**64 * total
-        cumulative = 0.0
-        for candidate, weight in zip(candidates, weights, strict=True):
-            cumulative += weight
-            if point < cumulative:
-                return candidate
-        return candidates[-1]
