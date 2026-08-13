@@ -21,9 +21,13 @@ from .local import DEFAULT_GAME_TTL_SECONDS, DEFAULT_MAX_GAMES
 from .models import StoredGameState, StoredOutlook
 
 DEFAULT_LOCK_TTL_SECONDS = 30.0
+_LOCK_TTL_MILLISECONDS = max(1, round(DEFAULT_LOCK_TTL_SECONDS * 1000))
 
 _SCHEMA_VERSION = 1
 
+# A Redis-side Lua script runs atomically and single-threaded, so successive
+# INCR calls on KEYS[3] are already strictly ordered — no need to derive a
+# score from wall-clock TIME to break ties.
 _GET_SCRIPT = """
 local value = redis.call('GET', KEYS[1])
 if not value then
@@ -31,14 +35,7 @@ if not value then
     return false
 end
 redis.call('PEXPIRE', KEYS[1], ARGV[1])
-local now = redis.call('TIME')
-local score = now[1] * 1000000 + now[2]
-local previous = tonumber(redis.call('GET', KEYS[3]) or '0')
-if score <= previous then
-    score = previous + 1
-end
-redis.call('SET', KEYS[3], score)
-redis.call('ZADD', KEYS[2], score, ARGV[2])
+redis.call('ZADD', KEYS[2], redis.call('INCR', KEYS[3]), ARGV[2])
 return value
 """
 
@@ -54,14 +51,7 @@ if redis.call('GET', KEYS[4]) ~= ARGV[1] then
     return 0
 end
 redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
-local now = redis.call('TIME')
-local score = now[1] * 1000000 + now[2]
-local previous = tonumber(redis.call('GET', KEYS[3]) or '0')
-if score <= previous then
-    score = previous + 1
-end
-redis.call('SET', KEYS[3], score)
-redis.call('ZADD', KEYS[2], score, ARGV[4])
+redis.call('ZADD', KEYS[2], redis.call('INCR', KEYS[3]), ARGV[4])
 while redis.call('ZCARD', KEYS[2]) > tonumber(ARGV[5]) do
     local evicted = redis.call('ZRANGE', KEYS[2], 0, 0)
     if #evicted > 0 then
@@ -99,9 +89,6 @@ class RedisGameStore:
         self._lru_key = f"{base}:lru"
         self._clock_key = f"{base}:clock"
         self._lock_prefix = f"{base}:lock:"
-        self._lock_ttl_milliseconds = max(
-            1, round(DEFAULT_LOCK_TTL_SECONDS * 1000)
-        )
         self._held: dict[str, bytes] = {}
         self._close_client = close_client
 
@@ -155,7 +142,7 @@ class RedisGameStore:
                 self._lock_key(game_id),
                 token,
                 nx=True,
-                px=self._lock_ttl_milliseconds,
+                px=_LOCK_TTL_MILLISECONDS,
             )
         )
         if not acquired:
