@@ -24,6 +24,7 @@ mcp-app = "mcp_app.main:main"
 dev = [
     "fakeredis[lua]>=2.36,<3",
     "httpx>=0.28,<1",
+    "mypy>=1.18,<2",
     "pytest>=8.4,<9",
     "pytest-asyncio>=1.0,<2",
     "ruff>=0.12,<1",
@@ -41,7 +42,11 @@ line-length = 88
 target-version = "py314"
 
 [tool.ruff.lint]
-select = ["B", "E", "F", "I", "SIM", "UP"]
+select = ["ASYNC", "B", "C4", "E", "F", "I", "PTH", "RUF", "SIM", "UP"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["mcp_app"]
+
+[tool.mypy]
+files = ["src"]
+strict = true

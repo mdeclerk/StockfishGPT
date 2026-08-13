@@ -3,7 +3,7 @@
 import asyncio
 import os
 import shutil
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from time import monotonic
 from typing import Protocol, Self, TypeVar
@@ -36,7 +36,7 @@ class _EngineTransport(Protocol):
 
 
 class _UciProtocol(Protocol):
-    async def configure(self, options: Mapping[str, object]) -> None: ...
+    async def configure(self, options: chess.engine.ConfigMapping) -> None: ...
 
     async def analyse(
         self,
