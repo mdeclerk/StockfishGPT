@@ -82,19 +82,14 @@ def test_server_settings_and_instructions(tmp_path: Path) -> None:
     assert mcp.settings.host == "127.0.0.1"
     assert mcp.settings.port == 8000
     assert mcp.settings.transport_security is not None
-    assert (
-        mcp.settings.transport_security.enable_dns_rebinding_protection
-        is False
-    )
+    assert mcp.settings.transport_security.enable_dns_rebinding_protection is False
     assert mcp.instructions == SERVER_INSTRUCTIONS
     assert len(mcp.instructions) < 800
     assert "For any play/start request, immediately call `start_game`" in (
         mcp.instructions
     )
     assert "do not reply first" in mcp.instructions
-    assert "Never claim a game started unless the call succeeded" in (
-        mcp.instructions
-    )
+    assert "Never claim a game started unless the call succeeded" in (mcp.instructions)
     assert "needs no board, FEN, or `game_id`" in mcp.instructions
     assert "Later, use the latest `game_id` and fresh state" in mcp.instructions
     assert "`get_game_state` for facts/status/history/rules" in mcp.instructions
@@ -106,8 +101,7 @@ def test_server_settings_and_instructions(tmp_path: Path) -> None:
     assert "`start_game` is the model's only write" in mcp.instructions
     assert (
         "Only the board calls `reset_game`, `play_white_move`, or "
-        "`undo_white_move`"
-        in mcp.instructions
+        "`undo_white_move`" in mcp.instructions
     )
     assert "direct those requests to its controls" in mcp.instructions
 
@@ -118,10 +112,7 @@ def test_server_accepts_network_overrides(tmp_path: Path) -> None:
     assert mcp.settings.host == "0.0.0.0"
     assert mcp.settings.port == 9000
     assert mcp.settings.transport_security is not None
-    assert (
-        mcp.settings.transport_security.enable_dns_rebinding_protection
-        is False
-    )
+    assert mcp.settings.transport_security.enable_dns_rebinding_protection is False
 
 
 @pytest.mark.asyncio
@@ -251,9 +242,10 @@ async def test_tool_and_resource_contracts(tmp_path: Path) -> None:
         "openai/outputTemplate": WIDGET_URI,
     }
     assert len(tools["start_game"].description) < 300
-    assert "Immediately call for every play/start request" in tools[
-        "start_game"
-    ].description
+    assert (
+        "Immediately call for every play/start request"
+        in tools["start_game"].description
+    )
     assert "do not reply first or claim success" in tools["start_game"].description
     assert "needs no board, FEN, or game_id" in tools["start_game"].description
     assert "Use once per chat" in tools["start_game"].description
@@ -353,9 +345,7 @@ async def test_tools_share_authoritative_state_and_structured_responses(
     assert played.structuredContent["uci_history"][0] == "e2e4"
     assert current.structuredContent == played.structuredContent
     assert analyzed.structuredContent["game"] == current.structuredContent
-    variation = analyzed.structuredContent["candidates"][0][
-        "principal_variation"
-    ]
+    variation = analyzed.structuredContent["candidates"][0]["principal_variation"]
     assert set(variation[0]) == {"move_uci", "move_san"}
     assert undone.structuredContent["ply_count"] == 0
     assert reset.structuredContent["game_id"] == game_id

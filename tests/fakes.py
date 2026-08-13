@@ -35,9 +35,7 @@ class FirstMoveEngine:
         nodes: int,
     ) -> list[chess.engine.InfoDict]:
         self.calls.append((board.fen(en_passant="fen"), multipv, nodes))
-        return [
-            candidate_info(move) for move in list(board.legal_moves)[:multipv]
-        ]
+        return [candidate_info(move) for move in list(board.legal_moves)[:multipv]]
 
 
 class RecordingEngine(FirstMoveEngine):

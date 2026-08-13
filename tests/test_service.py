@@ -240,8 +240,9 @@ async def test_undo_white_move_removes_a_full_turn_and_restores_outlook() -> Non
 
 
 @pytest.mark.asyncio
-async def test_analysis_returns_current_state_and_black_reply_without_mutating(
-) -> None:
+async def test_analysis_returns_current_state_and_black_reply_without_mutating() -> (
+    None
+):
     engine = LineEngine()
     service = make_service(engine)
     game = await service.start_game()

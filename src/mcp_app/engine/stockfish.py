@@ -167,9 +167,7 @@ class StockfishEngine:
 
     async def _start_locked(self) -> None:
         path = self._resolve_path()
-        transport, protocol = await self._await_engine(
-            "startup", self._factory(path)
-        )
+        transport, protocol = await self._await_engine("startup", self._factory(path))
         try:
             await self._await_engine(
                 "configuration",

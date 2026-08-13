@@ -28,9 +28,7 @@ def info(
         "pv": [chess.Move.from_uci(uci) for uci in moves_uci],
     }
     if white_wdl is not None:
-        built["wdl"] = chess.engine.PovWdl(
-            chess.engine.Wdl(*white_wdl), chess.WHITE
-        )
+        built["wdl"] = chess.engine.PovWdl(chess.engine.Wdl(*white_wdl), chess.WHITE)
     return built
 
 
@@ -124,9 +122,7 @@ def test_incomplete_stockfish_candidate_is_rejected(
 
 def test_illegal_principal_variation_is_rejected() -> None:
     with pytest.raises(InvalidAnalysisError, match="illegal move"):
-        Move.from_engine(
-            chess.Board(START_FEN), info("e2e4", "e2e4")
-        )
+        Move.from_engine(chess.Board(START_FEN), info("e2e4", "e2e4"))
 
 
 def test_evaluation_normalizes_fen_and_orders_candidates() -> None:

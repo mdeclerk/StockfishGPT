@@ -130,9 +130,7 @@ class GameStateSchema(BaseSchema):
             uci_history=state.uci_history,
             san_history=state.san_history,
             outlook=(
-                WinDrawLossSchema.from_domain(state.outlook)
-                if state.outlook
-                else None
+                WinDrawLossSchema.from_domain(state.outlook) if state.outlook else None
             ),
         )
 

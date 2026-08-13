@@ -203,9 +203,7 @@ class Move:
                 raise InvalidAnalysisError(
                     "principal variation contains an illegal move"
                 )
-            moves.append(
-                VariationMove(move_uci=move.uci(), move_san=replay.san(move))
-            )
+            moves.append(VariationMove(move_uci=move.uci(), move_san=replay.san(move)))
             replay.push(move)
         return tuple(moves)
 

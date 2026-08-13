@@ -31,8 +31,7 @@ class GameBusyError(ChessServiceError):
     def __init__(self, game_id: str) -> None:
         self.game_id = game_id
         super().__init__(
-            f"Chess game {game_id!r} is busy with another request; "
-            "retry in a moment."
+            f"Chess game {game_id!r} is busy with another request; retry in a moment."
         )
 
 

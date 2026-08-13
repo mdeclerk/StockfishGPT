@@ -137,9 +137,7 @@ def register_tools(mcp: FastMCP, service: ChessService) -> None:
         structured_output=True,
     )
     async def get_game_state(game_id: str) -> GameStateSchema:
-        return GameStateSchema.from_domain(
-            await service.get_game_state(game_id)
-        )
+        return GameStateSchema.from_domain(await service.get_game_state(game_id))
 
     @mcp.tool(
         name="analyze_position",

@@ -28,9 +28,7 @@ AFTER_E4_FEN = "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
 def candidate_info(move_uci: str) -> chess.engine.InfoDict:
     return {
         "score": chess.engine.PovScore(chess.engine.Cp(15), chess.WHITE),
-        "wdl": chess.engine.PovWdl(
-            chess.engine.Wdl(300, 400, 300), chess.WHITE
-        ),
+        "wdl": chess.engine.PovWdl(chess.engine.Wdl(300, 400, 300), chess.WHITE),
         "pv": [chess.Move.from_uci(move_uci)],
     }
 
@@ -157,9 +155,7 @@ async def test_start_and_close_are_idempotent() -> None:
     await engine.start()
 
     assert opened_paths == [sys.executable]
-    assert protocol.configure_calls == [
-        {"Threads": 1, "Hash": 64, "UCI_ShowWDL": True}
-    ]
+    assert protocol.configure_calls == [{"Threads": 1, "Hash": 64, "UCI_ShowWDL": True}]
     assert engine.is_alive is True
 
     await engine.close()
@@ -245,9 +241,7 @@ async def test_analyze_returns_raw_normalized_info_list() -> None:
     protocol.return_single = True
     await engine.start()
 
-    infos = await engine.analyze(
-        chess.Board(AFTER_E4_FEN), multipv=1, nodes=1234
-    )
+    infos = await engine.analyze(chess.Board(AFTER_E4_FEN), multipv=1, nodes=1234)
 
     assert isinstance(infos, list)
     assert infos[0]["pv"][0].uci() == "e7e5"
@@ -355,9 +349,7 @@ async def test_analysis_timeout_is_typed(
     await engine.start()
 
     with pytest.raises(EngineTimeoutError) as raised:
-        await engine.analyze(
-            chess.Board(AFTER_E4_FEN), multipv=1, nodes=100
-        )
+        await engine.analyze(chess.Board(AFTER_E4_FEN), multipv=1, nodes=100)
 
     assert raised.value.operation == "analysis"
     await engine.close()
@@ -398,9 +390,7 @@ async def test_real_stockfish_analyzes_initial_position() -> None:
         pytest.fail("RUN_STOCKFISH_TESTS=1 but no Stockfish executable was found")
 
     async with StockfishEngine() as engine:
-        infos = await engine.analyze(
-            chess.Board(START_FEN), multipv=1, nodes=60_000
-        )
+        infos = await engine.analyze(chess.Board(START_FEN), multipv=1, nodes=60_000)
 
     legal = {move.uci() for move in chess.Board(START_FEN).legal_moves}
     assert infos[0]["pv"][0].uci() in legal
