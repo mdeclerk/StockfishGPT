@@ -12,6 +12,7 @@ from mcp_app.engine.errors import (
 )
 from mcp_app.service.errors import (
     ChessServiceError,
+    GameBusyError,
     GameNotFoundError,
     GameVersionError,
     InvalidAnalysisError,
@@ -33,6 +34,7 @@ from mcp_app.store.errors import (
     [
         (TerminalPositionError, PositionError),
         (InvalidAnalysisError, ChessServiceError),
+        (GameBusyError, ChessServiceError),
         (GameNotFoundError, ChessServiceError),
         (GameVersionError, ChessServiceError),
         (InvalidMoveError, ChessServiceError),

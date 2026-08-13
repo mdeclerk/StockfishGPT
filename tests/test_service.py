@@ -7,6 +7,7 @@ from fakes import FirstMoveEngine, RecordingEngine, candidate_info
 
 from mcp_app.engine import Engine
 from mcp_app.service.errors import (
+    GameBusyError,
     GameNotFoundError,
     GameVersionError,
     InvalidMoveError,
@@ -15,7 +16,7 @@ from mcp_app.service.errors import (
 from mcp_app.service.models import Difficulty, GameStatus, ServiceStatus
 from mcp_app.service.service import ChessService
 from mcp_app.store import LocalGameStore
-from mcp_app.store.errors import StoreDataError
+from mcp_app.store.errors import GameLeaseLostError, StoreDataError
 from mcp_app.store.local import DEFAULT_GAME_TTL_SECONDS
 from mcp_app.store.models import StoredGameState
 
@@ -150,33 +151,12 @@ async def test_start_and_reset_return_complete_authoritative_state() -> None:
 
 
 @pytest.mark.asyncio
-async def test_start_retries_an_atomic_game_id_collision() -> None:
-    class OnceCollidingStore(LocalGameStore):
-        def __init__(self) -> None:
-            super().__init__()
-            self.create_calls = 0
-
-        async def create(self, record: StoredGameState) -> bool:
-            self.create_calls += 1
-            if self.create_calls == 1:
-                return False
-            return await super().create(record)
-
-    store = OnceCollidingStore()
-    service = ChessService(FirstMoveEngine(), store)
-
-    game = await service.start_game()
-
-    assert game.game_id
-    assert store.create_calls == 2
-
-
-@pytest.mark.asyncio
 async def test_invalid_persisted_domain_values_are_typed_store_errors() -> None:
     store = LocalGameStore()
     service = ChessService(FirstMoveEngine(), store)
     record = StoredGameState("broken", 0, "impossible", (), (None,))
-    assert await store.create(record)
+    async with store.try_lock(record.game_id):
+        await store.set(record)
 
     with pytest.raises(StoreDataError, match="difficulty"):
         await service.get_game_state(record.game_id)
@@ -291,8 +271,19 @@ def test_status_detects_fifty_move_rule() -> None:
 
 
 @pytest.mark.asyncio
-async def test_stale_or_duplicate_concurrent_mutations_only_commit_once() -> None:
-    engine = FirstMoveEngine()
+async def test_concurrent_mutations_on_one_game_are_rejected_as_busy() -> None:
+    class YieldingEngine(FirstMoveEngine):
+        async def analyze(
+            self,
+            board: chess.Board,
+            *,
+            multipv: int,
+            nodes: int,
+        ) -> list[chess.engine.InfoDict]:
+            await asyncio.sleep(0)
+            return await super().analyze(board, multipv=multipv, nodes=nodes)
+
+    engine = YieldingEngine()
     service = make_service(engine)
     game = await service.start_game()
 
@@ -303,8 +294,49 @@ async def test_stale_or_duplicate_concurrent_mutations_only_commit_once() -> Non
     )
 
     assert sum(not isinstance(result, Exception) for result in results) == 1
-    assert sum(isinstance(result, GameVersionError) for result in results) == 1
+    assert sum(isinstance(result, GameBusyError) for result in results) == 1
     assert (await service.get_game_state(game.game_id)).version == 1
+
+
+@pytest.mark.asyncio
+async def test_busy_game_rejects_requests_before_any_engine_work() -> None:
+    engine = FirstMoveEngine()
+    store = LocalGameStore()
+    service = ChessService(engine, store)
+    game = await service.start_game()
+
+    async with store.try_lock(game.game_id):
+        with pytest.raises(GameBusyError, match="busy"):
+            await service.play_white_move(game.game_id, 0, "e2e4")
+        with pytest.raises(GameBusyError, match="busy"):
+            await service.analyze_position(game.game_id)
+        with pytest.raises(GameBusyError, match="busy"):
+            await service.undo_white_move(game.game_id, 0)
+        with pytest.raises(GameBusyError, match="busy"):
+            await service.reset_game(game.game_id, 0)
+
+    assert engine.calls == []
+
+
+@pytest.mark.asyncio
+async def test_lost_lock_lease_on_commit_is_a_version_conflict() -> None:
+    class LeaseLosingStore(LocalGameStore):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sets = 0
+
+        async def set(self, record: StoredGameState) -> None:
+            self.sets += 1
+            if self.sets > 1:
+                raise GameLeaseLostError("lock lease expired")
+            await super().set(record)
+
+    store = LeaseLosingStore()
+    service = ChessService(FirstMoveEngine(), store)
+    game = await service.start_game()
+
+    with pytest.raises(GameVersionError, match="current version is 0"):
+        await service.play_white_move(game.game_id, 0, "e2e4")
 
 
 @pytest.mark.asyncio

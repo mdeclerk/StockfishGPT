@@ -3,14 +3,24 @@
 import hashlib
 import math
 import secrets
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 import chess
 
 from mcp_app.engine import Engine
-from mcp_app.store import GameStore, StoreDataError, StoredGameState, StoredOutlook
+from mcp_app.store import (
+    GameLeaseLostError,
+    GameLockedError,
+    GameStore,
+    StoreDataError,
+    StoredGameState,
+    StoredOutlook,
+)
 
 from .errors import (
+    GameBusyError,
     GameNotFoundError,
     GameVersionError,
     InvalidMoveError,
@@ -67,16 +77,16 @@ class ChessService:
         self,
         difficulty: Difficulty = Difficulty.CLUB,
     ) -> GameState:
-        while True:
-            record = StoredGameState(
-                game_id=self._new_game_id(),
-                version=0,
-                difficulty=difficulty.value,
-                uci_history=(),
-                outlooks=(None,),
-            )
-            if await self._store.create(record):
-                return self._snapshot(record, chess.Board())
+        record = StoredGameState(
+            game_id=self._new_game_id(),
+            version=0,
+            difficulty=difficulty.value,
+            uci_history=(),
+            outlooks=(None,),
+        )
+        async with self._gate(record.game_id):
+            await self._store.set(record)
+        return self._snapshot(record, chess.Board())
 
     async def reset_game(
         self,
@@ -84,16 +94,17 @@ class ChessService:
         version: int,
         difficulty: Difficulty = Difficulty.CLUB,
     ) -> GameState:
-        record = await self._get_record(game_id)
-        self._require_version(record, version)
-        replacement = StoredGameState(
-            game_id=record.game_id,
-            version=record.version + 1,
-            difficulty=difficulty.value,
-            uci_history=(),
-            outlooks=(None,),
-        )
-        await self._commit(record, replacement, version)
+        async with self._gate(game_id):
+            record = await self._get_record(game_id)
+            self._require_version(record, version)
+            replacement = StoredGameState(
+                game_id=record.game_id,
+                version=record.version + 1,
+                difficulty=difficulty.value,
+                uci_history=(),
+                outlooks=(None,),
+            )
+            await self._commit(replacement, version)
         return self._snapshot(replacement, chess.Board())
 
     async def get_game_state(self, game_id: str) -> GameState:
@@ -106,68 +117,79 @@ class ChessService:
         version: int,
         move_uci: str,
     ) -> GameState:
-        record = await self._get_record(game_id)
-        self._require_version(record, version)
-        board = self._board(record)
-        if self._status(board) is not GameStatus.IN_PROGRESS:
-            raise TerminalPositionError(board.fen(en_passant="fen"))
-        if board.turn != chess.WHITE:
-            raise NotPlayersTurnError()
+        async with self._gate(game_id):
+            record = await self._get_record(game_id)
+            self._require_version(record, version)
+            board = self._board(record)
+            if self._status(board) is not GameStatus.IN_PROGRESS:
+                raise TerminalPositionError(board.fen(en_passant="fen"))
+            if board.turn != chess.WHITE:
+                raise NotPlayersTurnError()
 
-        move = self._legal_move(board, move_uci)
-        board.push(move)
-        history = (*record.uci_history, move.uci())
-        outlooks = (*record.outlooks, record.outlooks[-1])
-        difficulty = self._difficulty(record)
+            move = self._legal_move(board, move_uci)
+            board.push(move)
+            history = (*record.uci_history, move.uci())
+            outlooks = (*record.outlooks, record.outlooks[-1])
+            difficulty = self._difficulty(record)
 
-        if self._status(board) is GameStatus.IN_PROGRESS:
-            evaluation = await self._analyze_move(board, difficulty)
-            reply = self._choose(evaluation, difficulty)
-            board.push(chess.Move.from_uci(reply.move_uci))
-            history = (*history, reply.move_uci)
-            outlooks = (*outlooks, self._store_outlook(reply.wdl))
+            if self._status(board) is GameStatus.IN_PROGRESS:
+                evaluation = await self._analyze_move(board, difficulty)
+                reply = self._choose(evaluation, difficulty)
+                board.push(chess.Move.from_uci(reply.move_uci))
+                history = (*history, reply.move_uci)
+                outlooks = (*outlooks, self._store_outlook(reply.wdl))
 
-        replacement = StoredGameState(
-            game_id=record.game_id,
-            version=record.version + 1,
-            difficulty=record.difficulty,
-            uci_history=history,
-            outlooks=outlooks,
-        )
-        await self._commit(record, replacement, version)
+            replacement = StoredGameState(
+                game_id=record.game_id,
+                version=record.version + 1,
+                difficulty=record.difficulty,
+                uci_history=history,
+                outlooks=outlooks,
+            )
+            await self._commit(replacement, version)
         return self._snapshot(replacement, board)
 
     async def analyze_position(self, game_id: str) -> PositionAnalysis:
-        record = await self._get_record(game_id)
-        board = self._board(record)
-        if self._status(board) is not GameStatus.IN_PROGRESS:
-            raise TerminalPositionError(board.fen(en_passant="fen"))
-        evaluation = await self._analyze_position(board)
+        async with self._gate(game_id):
+            record = await self._get_record(game_id)
+            board = self._board(record)
+            if self._status(board) is not GameStatus.IN_PROGRESS:
+                raise TerminalPositionError(board.fen(en_passant="fen"))
+            evaluation = await self._analyze_position(board)
         return PositionAnalysis(
             game=self._snapshot(record, board),
             candidates=evaluation.candidates,
         )
 
     async def undo_white_move(self, game_id: str, version: int) -> GameState:
-        record = await self._get_record(game_id)
-        self._require_version(record, version)
-        if not record.uci_history:
-            raise NothingToUndoError
+        async with self._gate(game_id):
+            record = await self._get_record(game_id)
+            self._require_version(record, version)
+            if not record.uci_history:
+                raise NothingToUndoError
 
-        plies = 2 if len(record.uci_history) % 2 == 0 else 1
-        replacement = StoredGameState(
-            game_id=record.game_id,
-            version=record.version + 1,
-            difficulty=record.difficulty,
-            uci_history=record.uci_history[:-plies],
-            outlooks=record.outlooks[:-plies],
-        )
-        await self._commit(record, replacement, version)
+            plies = 2 if len(record.uci_history) % 2 == 0 else 1
+            replacement = StoredGameState(
+                game_id=record.game_id,
+                version=record.version + 1,
+                difficulty=record.difficulty,
+                uci_history=record.uci_history[:-plies],
+                outlooks=record.outlooks[:-plies],
+            )
+            await self._commit(replacement, version)
         return self._snapshot(replacement, self._board(replacement))
 
     @staticmethod
     def _new_game_id() -> str:
         return secrets.token_urlsafe(24)
+
+    @asynccontextmanager
+    async def _gate(self, game_id: str) -> AsyncIterator[None]:
+        try:
+            async with self._store.try_lock(game_id):
+                yield
+        except GameLockedError as error:
+            raise GameBusyError(game_id) from error
 
     async def _get_record(self, game_id: str) -> StoredGameState:
         record = await self._store.get(game_id)
@@ -177,20 +199,21 @@ class ChessService:
 
     async def _commit(
         self,
-        expected: StoredGameState,
         replacement: StoredGameState,
         requested_version: int,
     ) -> None:
-        if await self._store.compare_and_set(expected, replacement):
-            return
-        current = await self._store.get(expected.game_id)
-        if current is None:
-            raise GameNotFoundError(expected.game_id)
-        raise GameVersionError(
-            expected.game_id,
-            requested_version,
-            current.version,
-        )
+        try:
+            await self._store.set(replacement)
+        except GameLeaseLostError as error:
+            # A successor may have taken over after our lock lease expired.
+            current = await self._store.get(replacement.game_id)
+            if current is None:
+                raise GameNotFoundError(replacement.game_id) from error
+            raise GameVersionError(
+                replacement.game_id,
+                requested_version,
+                current.version,
+            ) from error
 
     @staticmethod
     def _require_version(record: StoredGameState, version: int) -> None:
