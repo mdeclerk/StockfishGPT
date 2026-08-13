@@ -17,6 +17,7 @@ from mcp_app.store import (
     StoreDataError,
     StoredGameState,
     StoredOutlook,
+    locked,
 )
 
 from .errors import (
@@ -186,7 +187,7 @@ class ChessService:
     @asynccontextmanager
     async def _gate(self, game_id: str) -> AsyncIterator[None]:
         try:
-            async with self._store.try_lock(game_id):
+            async with locked(self._store, game_id):
                 yield
         except GameLockedError as error:
             raise GameBusyError(game_id) from error

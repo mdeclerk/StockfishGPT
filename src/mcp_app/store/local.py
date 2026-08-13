@@ -2,13 +2,11 @@
 
 import asyncio
 from collections import OrderedDict
-from collections.abc import AsyncIterator, Callable
-from contextlib import asynccontextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import monotonic
 from typing import Self
 
-from .errors import GameLockedError
 from .models import StoredGameState
 
 DEFAULT_GAME_TTL_SECONDS = 3600.0
@@ -65,14 +63,15 @@ class LocalGameStore:
             self._entries.move_to_end(game_id)
             return entry.record
 
-    @asynccontextmanager
-    async def try_lock(self, game_id: str) -> AsyncIterator[None]:
-        if game_id in self._busy:
-            raise GameLockedError(f"game {game_id!r} is busy")
-        self._busy.add(game_id)
-        try:
-            yield
-        finally:
+    async def try_lock(self, game_id: str) -> bool:
+        async with self._lock:
+            if game_id in self._busy:
+                return False
+            self._busy.add(game_id)
+            return True
+
+    async def unlock(self, game_id: str) -> None:
+        async with self._lock:
             self._busy.discard(game_id)
 
     async def set(self, record: StoredGameState) -> None:

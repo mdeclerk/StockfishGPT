@@ -15,7 +15,7 @@ from mcp_app.service.errors import (
 )
 from mcp_app.service.models import Difficulty, GameStatus, ServiceStatus
 from mcp_app.service.service import ChessService
-from mcp_app.store import LocalGameStore
+from mcp_app.store import LocalGameStore, locked
 from mcp_app.store.errors import GameLeaseLostError, StoreDataError
 from mcp_app.store.local import DEFAULT_GAME_TTL_SECONDS
 from mcp_app.store.models import StoredGameState
@@ -155,7 +155,7 @@ async def test_invalid_persisted_domain_values_are_typed_store_errors() -> None:
     store = LocalGameStore()
     service = ChessService(FirstMoveEngine(), store)
     record = StoredGameState("broken", 0, "impossible", (), (None,))
-    async with store.try_lock(record.game_id):
+    async with locked(store, record.game_id):
         await store.set(record)
 
     with pytest.raises(StoreDataError, match="difficulty"):
@@ -305,7 +305,7 @@ async def test_busy_game_rejects_requests_before_any_engine_work() -> None:
     service = ChessService(engine, store)
     game = await service.start_game()
 
-    async with store.try_lock(game.game_id):
+    async with locked(store, game.game_id):
         with pytest.raises(GameBusyError, match="busy"):
             await service.play_white_move(game.game_id, 0, "e2e4")
         with pytest.raises(GameBusyError, match="busy"):

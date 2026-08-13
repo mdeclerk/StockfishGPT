@@ -9,7 +9,7 @@ from .errors import (
 )
 from .local import LocalGameStore
 from .models import StoredGameState, StoredOutlook
-from .protocol import GameStore
+from .protocol import GameStore, locked
 from .redis import RedisGameStore
 
 __all__ = [
@@ -23,4 +23,5 @@ __all__ = [
     "StoreError",
     "StoreUnavailableError",
     "StoredOutlook",
+    "locked",
 ]

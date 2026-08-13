@@ -2,8 +2,7 @@
 
 import json
 import secrets
-from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, suppress
+from contextlib import suppress
 from typing import Any, Self
 
 from redis.asyncio import Redis
@@ -13,7 +12,6 @@ from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from .errors import (
     GameLeaseLostError,
-    GameLockedError,
     StoreDataError,
     StoreUnavailableError,
 )
@@ -134,8 +132,7 @@ class RedisGameStore:
             return None
         return self._deserialize(payload)
 
-    @asynccontextmanager
-    async def try_lock(self, game_id: str) -> AsyncIterator[None]:
+    async def try_lock(self, game_id: str) -> bool:
         token = secrets.token_bytes(16)
         acquired = await self._execute(
             self._client.set(
@@ -146,22 +143,24 @@ class RedisGameStore:
             )
         )
         if not acquired:
-            raise GameLockedError(f"game {game_id!r} is busy")
+            return False
         self._held[game_id] = token
-        try:
-            yield
-        finally:
-            self._held.pop(game_id, None)
-            # The lease TTL reclaims a lock whose release did not reach Redis.
-            with suppress(StoreUnavailableError):
-                await self._execute(
-                    self._client.eval(
-                        _RELEASE_SCRIPT,
-                        1,
-                        self._lock_key(game_id),
-                        token,
-                    )
+        return True
+
+    async def unlock(self, game_id: str) -> None:
+        token = self._held.pop(game_id, None)
+        if token is None:
+            return
+        # The lease TTL reclaims a lock whose release did not reach Redis.
+        with suppress(StoreUnavailableError):
+            await self._execute(
+                self._client.eval(
+                    _RELEASE_SCRIPT,
+                    1,
+                    self._lock_key(game_id),
+                    token,
                 )
+            )
 
     async def set(self, record: StoredGameState) -> None:
         token = self._held.get(record.game_id)
