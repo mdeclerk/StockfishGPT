@@ -69,56 +69,16 @@ async def fake_backend(
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
 @pytest.mark.asyncio
-async def test_store_contract_create_get_and_collision(kind: str) -> None:
+async def test_store_contract_set_and_get_roundtrip(kind: str) -> None:
     async with fake_backend(kind) as store:
         original = stored_game_state("game")
 
         assert isinstance(store, GameStore)
         assert await store.is_ready() is True
-        assert await store.create(original) is True
-        assert await store.create(stored_game_state("game", 1)) is False
+        async with store.try_lock("game"):
+            await store.set(original)
         assert await store.get("game") == original
         assert await store.get("missing") is None
-
-
-@pytest.mark.parametrize("kind", ["local", "redis"])
-@pytest.mark.asyncio
-async def test_store_contract_compare_and_set_has_one_concurrent_winner(
-    kind: str,
-) -> None:
-    async with fake_backend(kind) as store:
-        original = stored_game_state("game")
-        first = stored_game_state("game", 1)
-        second = StoredGameState("game", 2, "beginner", (), (None,))
-        assert await store.create(original)
-
-        results = await asyncio.gather(
-            store.compare_and_set(original, first),
-            store.compare_and_set(original, second),
-        )
-
-        assert sorted(results) == [False, True]
-        assert await store.get("game") in (first, second)
-        assert not await store.compare_and_set(original, first)
-
-
-@pytest.mark.parametrize("kind", ["local", "redis"])
-@pytest.mark.asyncio
-async def test_store_contract_evicts_the_least_recently_used_game(
-    kind: str,
-) -> None:
-    async with fake_backend(kind, max_games=2) as store:
-        first = stored_game_state("first")
-        second = stored_game_state("second")
-        third = stored_game_state("third")
-        assert await store.create(first)
-        assert await store.create(second)
-        assert await store.get("first") == first
-        assert await store.create(third)
-
-        assert await store.get("first") == first
-        assert await store.get("second") is None
-        assert await store.get("third") == third
 
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
@@ -242,7 +202,8 @@ async def test_local_store_uses_sliding_expiration_with_an_injected_clock() -> N
     clock = ManualClock()
     store = LocalGameStore(ttl_seconds=10, clock=clock)
     record = stored_game_state("game")
-    assert await store.create(record)
+    async with store.try_lock("game"):
+        await store.set(record)
 
     clock.advance(6)
     assert await store.get("game") == record
@@ -312,7 +273,7 @@ async def test_owned_redis_client_is_closed_when_startup_fails() -> None:
     TEST_REDIS_URL is None,
     reason="set TEST_REDIS_URL to exercise a real Redis server",
 )
-async def test_real_redis_shares_atomic_state_ttl_and_lru() -> None:
+async def test_real_redis_shares_state_locks_ttl_and_lru() -> None:
     assert TEST_REDIS_URL is not None
     namespace = f"stockfish-gpt-test-{uuid.uuid4().hex}"
     first_client = Redis.from_url(TEST_REDIS_URL, decode_responses=False)
@@ -332,24 +293,25 @@ async def test_real_redis_shares_atomic_state_ttl_and_lru() -> None:
     try:
         async with first_store, second_store:
             original = stored_game_state("original")
-            assert await first_store.create(original)
+            async with first_store.try_lock("original"):
+                await first_store.set(original)
             assert await second_store.get("original") == original
 
-            replacements = (
-                stored_game_state("original", 1),
-                stored_game_state("original", 2),
-            )
-            results = await asyncio.gather(
-                first_store.compare_and_set(original, replacements[0]),
-                second_store.compare_and_set(original, replacements[1]),
-            )
-            assert sorted(results) == [False, True]
+            async with first_store.try_lock("original"):
+                with pytest.raises(GameLockedError):
+                    async with second_store.try_lock("original"):
+                        pass
+                await first_store.set(stored_game_state("original", 1))
+            replacement = stored_game_state("original", 1)
+            assert await second_store.get("original") == replacement
 
             other = stored_game_state("other")
             latest = stored_game_state("latest")
-            assert await first_store.create(other)
+            async with first_store.try_lock("other"):
+                await first_store.set(other)
             assert await first_store.get("original") is not None
-            assert await second_store.create(latest)
+            async with second_store.try_lock("latest"):
+                await second_store.set(latest)
             assert await first_store.get("other") is None
 
             await asyncio.sleep(0.15)

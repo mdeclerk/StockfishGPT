@@ -24,32 +24,6 @@ DEFAULT_LOCK_TTL_SECONDS = 30.0
 
 _SCHEMA_VERSION = 1
 
-_CREATE_SCRIPT = """
-if redis.call('EXISTS', KEYS[1]) == 1 then
-    return 0
-end
-local created = redis.call('SET', KEYS[1], ARGV[1], 'PX', ARGV[2], 'NX')
-if not created then
-    return 0
-end
-local now = redis.call('TIME')
-local score = now[1] * 1000000 + now[2]
-local previous = tonumber(redis.call('GET', KEYS[3]) or '0')
-if score <= previous then
-    score = previous + 1
-end
-redis.call('SET', KEYS[3], score)
-redis.call('ZADD', KEYS[2], score, ARGV[4])
-while redis.call('ZCARD', KEYS[2]) > tonumber(ARGV[3]) do
-    local evicted = redis.call('ZRANGE', KEYS[2], 0, 0)
-    if #evicted > 0 then
-        redis.call('ZREM', KEYS[2], evicted[1])
-        redis.call('DEL', ARGV[5] .. evicted[1])
-    end
-end
-return 1
-"""
-
 _GET_SCRIPT = """
 local value = redis.call('GET', KEYS[1])
 if not value then
@@ -67,28 +41,6 @@ redis.call('SET', KEYS[3], score)
 redis.call('ZADD', KEYS[2], score, ARGV[2])
 return value
 """
-
-_CAS_SCRIPT = """
-local value = redis.call('GET', KEYS[1])
-if not value then
-    redis.call('ZREM', KEYS[2], ARGV[4])
-    return 0
-end
-if value ~= ARGV[1] then
-    return 0
-end
-redis.call('SET', KEYS[1], ARGV[2], 'PX', ARGV[3])
-local now = redis.call('TIME')
-local score = now[1] * 1000000 + now[2]
-local previous = tonumber(redis.call('GET', KEYS[3]) or '0')
-if score <= previous then
-    score = previous + 1
-end
-redis.call('SET', KEYS[3], score)
-redis.call('ZADD', KEYS[2], score, ARGV[4])
-return 1
-"""
-
 
 _RELEASE_SCRIPT = """
 if redis.call('GET', KEYS[1]) == ARGV[1] then
@@ -122,7 +74,7 @@ return 1
 
 
 class RedisGameStore:
-    """Shared Redis store with atomic CAS, sliding TTL, and global LRU."""
+    """Shared Redis store with per-game locks, fenced writes, and global LRU."""
 
     def __init__(
         self,
@@ -178,24 +130,6 @@ class RedisGameStore:
             return bool(await self._client.ping())
         except RedisError:
             return False
-
-    async def create(self, record: StoredGameState) -> bool:
-        payload = self._serialize(record)
-        result = await self._execute(
-            self._client.eval(
-                _CREATE_SCRIPT,
-                3,
-                self._record_key(record.game_id),
-                self._lru_key,
-                self._clock_key,
-                payload,
-                self._ttl_milliseconds,
-                self._max_games,
-                record.game_id,
-                self._record_prefix,
-            )
-        )
-        return bool(result)
 
     async def get(self, game_id: str) -> StoredGameState | None:
         payload = await self._execute(
@@ -266,28 +200,6 @@ class RedisGameStore:
             raise GameLeaseLostError(
                 f"lock lease for game {record.game_id!r} expired before the write"
             )
-
-    async def compare_and_set(
-        self,
-        expected: StoredGameState,
-        replacement: StoredGameState,
-    ) -> bool:
-        if replacement.game_id != expected.game_id:
-            raise ValueError("replacement game_id must match expected game_id")
-        result = await self._execute(
-            self._client.eval(
-                _CAS_SCRIPT,
-                3,
-                self._record_key(expected.game_id),
-                self._lru_key,
-                self._clock_key,
-                self._serialize(expected),
-                self._serialize(replacement),
-                self._ttl_milliseconds,
-                expected.game_id,
-            )
-        )
-        return bool(result)
 
     def _record_key(self, game_id: str) -> str:
         return f"{self._record_prefix}{game_id}"

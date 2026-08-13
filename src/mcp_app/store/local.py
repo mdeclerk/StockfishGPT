@@ -54,17 +54,6 @@ class LocalGameStore:
     async def is_ready(self) -> bool:
         return True
 
-    async def create(self, record: StoredGameState) -> bool:
-        async with self._lock:
-            now = self._clock()
-            self._purge_expired(now)
-            if record.game_id in self._entries:
-                return False
-            self._entries[record.game_id] = _Entry(record, now)
-            while len(self._entries) > self._max_games:
-                self._entries.popitem(last=False)
-            return True
-
     async def get(self, game_id: str) -> StoredGameState | None:
         async with self._lock:
             now = self._clock()
@@ -96,24 +85,6 @@ class LocalGameStore:
             self._entries.move_to_end(record.game_id)
             while len(self._entries) > self._max_games:
                 self._entries.popitem(last=False)
-
-    async def compare_and_set(
-        self,
-        expected: StoredGameState,
-        replacement: StoredGameState,
-    ) -> bool:
-        if replacement.game_id != expected.game_id:
-            raise ValueError("replacement game_id must match expected game_id")
-        async with self._lock:
-            now = self._clock()
-            self._purge_expired(now)
-            entry = self._entries.get(expected.game_id)
-            if entry is None or entry.record != expected:
-                return False
-            entry.record = replacement
-            entry.last_access = now
-            self._entries.move_to_end(expected.game_id)
-            return True
 
     def _purge_expired(self, now: float) -> None:
         expired = [

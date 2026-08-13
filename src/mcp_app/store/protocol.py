@@ -10,15 +10,7 @@ from .models import StoredGameState
 class GameStore(Protocol):
     """Atomic storage and per-game mutual exclusion for stored game states."""
 
-    async def create(self, record: StoredGameState) -> bool: ...
-
     async def get(self, game_id: str) -> StoredGameState | None: ...
-
-    async def compare_and_set(
-        self,
-        expected: StoredGameState,
-        replacement: StoredGameState,
-    ) -> bool: ...
 
     async def set(self, record: StoredGameState) -> None: ...
 
