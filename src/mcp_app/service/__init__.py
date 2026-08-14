@@ -2,7 +2,6 @@
 
 from .errors import (
     ChessServiceError,
-    GameBusyError,
     GameNotFoundError,
     GameVersionError,
     InvalidAnalysisError,
@@ -31,7 +30,6 @@ __all__ = [
     "ChessServiceError",
     "Difficulty",
     "Evaluation",
-    "GameBusyError",
     "GameNotFoundError",
     "GameState",
     "GameStatus",

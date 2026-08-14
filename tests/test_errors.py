@@ -12,7 +12,6 @@ from mcp_app.engine import (
 )
 from mcp_app.service import (
     ChessServiceError,
-    GameBusyError,
     GameNotFoundError,
     GameVersionError,
     InvalidAnalysisError,
@@ -20,13 +19,7 @@ from mcp_app.service import (
     PositionError,
     TerminalPositionError,
 )
-from mcp_app.store import (
-    GameLeaseLostError,
-    GameLockedError,
-    StoreDataError,
-    StoreError,
-    StoreUnavailableError,
-)
+from mcp_app.store import StoreDataError, StoreError, StoreUnavailableError
 
 
 @pytest.mark.parametrize(
@@ -34,7 +27,6 @@ from mcp_app.store import (
     [
         (TerminalPositionError, PositionError),
         (InvalidAnalysisError, ChessServiceError),
-        (GameBusyError, ChessServiceError),
         (GameNotFoundError, ChessServiceError),
         (GameVersionError, ChessServiceError),
         (InvalidMoveError, ChessServiceError),
@@ -45,8 +37,6 @@ from mcp_app.store import (
         (EngineRestartingError, EngineUnavailableError),
         (StoreDataError, StoreError),
         (StoreUnavailableError, StoreError),
-        (GameLockedError, StoreError),
-        (GameLeaseLostError, StoreError),
     ],
 )
 def test_errors_belong_to_their_layered_branches(

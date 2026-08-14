@@ -10,8 +10,6 @@ from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from mcp_app.store import (
-    GameLeaseLostError,
-    GameLockedError,
     GameStore,
     LocalGameStore,
     RedisGameStore,
@@ -19,7 +17,6 @@ from mcp_app.store import (
     StoredGameState,
     StoredOutlook,
     StoreUnavailableError,
-    locked,
 )
 
 TEST_REDIS_URL = os.getenv("TEST_REDIS_URL")
@@ -66,174 +63,104 @@ async def fake_backend(kind: str) -> AsyncIterator[GameStore]:
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
 @pytest.mark.asyncio
-async def test_store_contract_set_and_get_roundtrip(kind: str) -> None:
+async def test_store_contract_compare_and_set_and_get_roundtrip(kind: str) -> None:
     async with fake_backend(kind) as store:
         original = stored_game_state("game")
 
         assert isinstance(store, GameStore)
         assert await store.is_ready() is True
-        async with locked(store, "game") as fence:
-            await store.set(original, fence)
+        assert await store.compare_and_set(None, original) is True
         assert await store.get("game") == original
         assert await store.get("missing") is None
 
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
 @pytest.mark.asyncio
-async def test_store_contract_try_lock_rejects_overlap_until_released(
+async def test_store_contract_absent_expectation_inserts_only_once(kind: str) -> None:
+    async with fake_backend(kind) as store:
+        original = stored_game_state("game")
+
+        assert await store.compare_and_set(None, original) is True
+        assert await store.compare_and_set(None, stored_game_state("game", 1)) is False
+        assert await store.get("game") == original
+
+
+@pytest.mark.parametrize("kind", ["local", "redis"])
+@pytest.mark.asyncio
+async def test_store_contract_stale_expectation_leaves_the_record_intact(
     kind: str,
 ) -> None:
     async with fake_backend(kind) as store:
-        fence = await store.try_lock("game")
-        assert fence is not None
-        assert await store.try_lock("game") is None
-        other_fence = await store.try_lock("other")
-        assert other_fence is not None
-        await store.unlock("other", other_fence)
+        stale = stored_game_state("game", 1)
 
-        with pytest.raises(GameLockedError, match="busy"):
-            async with locked(store, "game"):
-                pass
+        # Nothing stored yet, so any non-absent expectation must lose.
+        assert await store.compare_and_set(stale, stored_game_state("game", 2)) is False
 
-        await store.unlock("game", fence)
-        async with locked(store, "game"):
-            pass
+        original = stored_game_state("game")
+        assert await store.compare_and_set(None, original) is True
+        assert await store.compare_and_set(stale, stored_game_state("game", 2)) is False
+        assert await store.get("game") == original
 
 
 @pytest.mark.parametrize("kind", ["local", "redis"])
 @pytest.mark.asyncio
-async def test_store_contract_try_lock_releases_on_error_and_cancellation(
+async def test_store_contract_compare_and_set_accepts_a_fetched_record(
+    kind: str,
+) -> None:
+    """A record returned by get() must be usable as the next expectation.
+
+    Load-bearing for Redis, which compares serialized bytes rather than
+    objects: this pins _serialize(get(x)) == _serialize(x).
+    """
+    async with fake_backend(kind) as store:
+        assert await store.compare_and_set(None, stored_game_state("game")) is True
+
+        fetched = await store.get("game")
+        assert fetched is not None
+
+        replacement = stored_game_state("game", 1)
+        assert await store.compare_and_set(fetched, replacement) is True
+        assert await store.get("game") == replacement
+
+
+@pytest.mark.parametrize("kind", ["local", "redis"])
+@pytest.mark.asyncio
+async def test_store_contract_replaces_one_game_without_touching_another(
     kind: str,
 ) -> None:
     async with fake_backend(kind) as store:
-        with pytest.raises(RuntimeError, match="boom"):
-            async with locked(store, "game"):
-                raise RuntimeError("boom")
+        first = stored_game_state("first")
+        replacement = stored_game_state("first", 1)
 
-        held = asyncio.Event()
+        assert await store.compare_and_set(None, first) is True
+        assert await store.compare_and_set(first, replacement) is True
+        assert await store.get("first") == replacement
 
-        async def hold_forever() -> None:
-            async with locked(store, "game"):
-                held.set()
-                await asyncio.Event().wait()
-
-        holder = asyncio.create_task(hold_forever())
-        await held.wait()
-        holder.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await holder
-
-        async with locked(store, "game"):
-            pass
-
-
-@pytest.mark.parametrize("kind", ["local", "redis"])
-@pytest.mark.asyncio
-async def test_store_contract_set_requires_the_game_lock(kind: str) -> None:
-    async with fake_backend(kind) as store:
-        with pytest.raises(GameLeaseLostError, match="expired"):
-            await store.set(stored_game_state("game"), "not-a-real-fence")
-
-
-@pytest.mark.parametrize("kind", ["local", "redis"])
-@pytest.mark.asyncio
-async def test_store_contract_set_inserts_and_replaces(kind: str) -> None:
-    async with fake_backend(kind) as store:
-        async with locked(store, "first") as fence:
-            await store.set(stored_game_state("first"), fence)
-        async with locked(store, "first") as fence:
-            await store.set(stored_game_state("first", 1), fence)
-        assert await store.get("first") == stored_game_state("first", 1)
-
-        async with locked(store, "second") as fence:
-            await store.set(stored_game_state("second"), fence)
-        assert await store.get("first") == stored_game_state("first", 1)
+        assert await store.compare_and_set(None, stored_game_state("second")) is True
+        assert await store.get("first") == replacement
         assert await store.get("second") == stored_game_state("second")
 
 
 @pytest.mark.asyncio
-async def test_redis_set_is_fenced_against_a_lost_lock_lease() -> None:
-    server = fakeredis.FakeServer()
-    client = fakeredis.FakeAsyncRedis(server=server)
-    zombie = RedisGameStore(client, namespace="lease-test")
-    successor = RedisGameStore(client, namespace="lease-test")
-    try:
-        zombie_fence = await zombie.try_lock("game")
-        assert zombie_fence is not None
-        await client.delete(zombie._lock_key("game"))
-
-        async with locked(successor, "game") as successor_fence:
-            await successor.set(stored_game_state("game", 1), successor_fence)
-            with pytest.raises(GameLeaseLostError, match="expired"):
-                await zombie.set(stored_game_state("game", 2), zombie_fence)
-            await zombie.unlock("game", zombie_fence)
-            assert await zombie.try_lock("game") is None
-
-        assert await successor.get("game") == stored_game_state("game", 1)
-    finally:
-        await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_redis_zombie_fence_ignored_after_successor_takes_over() -> None:
-    """A zombie's late unlock()/set() must not clobber the successor's lock.
-
-    The fence must be scoped per-acquisition, not cached by game_id.
-    """
-    server = fakeredis.FakeServer()
-    client = fakeredis.FakeAsyncRedis(server=server)
-    store = RedisGameStore(client, namespace="single-instance-lease-test")
-    try:
-        zombie_fence = await store.try_lock("game")
-        assert zombie_fence is not None
-        await client.delete(store._lock_key("game"))  # simulate lease expiry
-
-        successor_fence = await store.try_lock("game")
-        assert successor_fence is not None
-        assert successor_fence != zombie_fence
-        await store.set(stored_game_state("game", 1), successor_fence)
-
-        with pytest.raises(GameLeaseLostError, match="expired"):
-            await store.set(stored_game_state("game", 2), zombie_fence)
-        await store.unlock("game", zombie_fence)
-
-        assert await store.get("game") == stored_game_state("game", 1)
-        assert await store.try_lock("game") is None  # successor's lock still held
-    finally:
-        await client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_redis_lock_is_shared_across_store_instances() -> None:
+async def test_redis_compare_and_set_is_shared_across_store_instances() -> None:
     server = fakeredis.FakeServer()
     first_client = fakeredis.FakeAsyncRedis(server=server)
     second_client = fakeredis.FakeAsyncRedis(server=server)
     first = RedisGameStore(first_client, namespace="cross-instance")
     second = RedisGameStore(second_client, namespace="cross-instance")
     try:
-        async with locked(first, "game"):
-            with pytest.raises(GameLockedError):
-                async with locked(second, "game"):
-                    pass
-        async with locked(second, "game"):
-            pass
+        original = stored_game_state("game")
+        winner = stored_game_state("game", 1)
+        assert await first.compare_and_set(None, original) is True
+
+        # Both instances raced from the same expectation; only one may commit.
+        assert await second.compare_and_set(original, winner) is True
+        loser = stored_game_state("game", 2)
+        assert await first.compare_and_set(original, loser) is False
+        assert await first.get("game") == winner
     finally:
         await first_client.aclose()
         await second_client.aclose()
-
-
-@pytest.mark.asyncio
-async def test_redis_lock_lease_expires_after_the_configured_ttl() -> None:
-    server = fakeredis.FakeServer()
-    client = fakeredis.FakeAsyncRedis(server=server)
-    store = RedisGameStore(client, namespace="lock-ttl", lock_ttl_seconds=0.05)
-    try:
-        assert await store.try_lock("game") is not None
-        assert await store.try_lock("game") is None
-        await asyncio.sleep(0.1)
-        assert await store.try_lock("game") is not None  # lease reclaimed the lock
-    finally:
-        await client.aclose()
 
 
 @pytest.mark.asyncio
@@ -241,8 +168,7 @@ async def test_local_store_uses_sliding_expiration_with_an_injected_clock() -> N
     clock = ManualClock()
     store = LocalGameStore(ttl_seconds=10, clock=clock)
     record = stored_game_state("game")
-    async with locked(store, "game") as fence:
-        await store.set(record, fence)
+    assert await store.compare_and_set(None, record) is True
 
     clock.advance(6)
     assert await store.get("game") == record
@@ -312,7 +238,7 @@ async def test_owned_redis_client_is_closed_when_startup_fails() -> None:
     TEST_REDIS_URL is None,
     reason="set TEST_REDIS_URL to exercise a real Redis server",
 )
-async def test_real_redis_shares_state_locks_and_ttl() -> None:
+async def test_real_redis_shares_state_and_ttl() -> None:
     assert TEST_REDIS_URL is not None
     namespace = f"stockfish-gpt-test-{uuid.uuid4().hex}"
     first_client = Redis.from_url(TEST_REDIS_URL, decode_responses=False)
@@ -322,17 +248,13 @@ async def test_real_redis_shares_state_locks_and_ttl() -> None:
     try:
         async with first_store, second_store:
             original = stored_game_state("original")
-            async with locked(first_store, "original") as fence:
-                await first_store.set(original, fence)
+            assert await first_store.compare_and_set(None, original) is True
             assert await second_store.get("original") == original
 
-            async with locked(first_store, "original") as fence:
-                with pytest.raises(GameLockedError):
-                    async with locked(second_store, "original"):
-                        pass
-                await first_store.set(stored_game_state("original", 1), fence)
             replacement = stored_game_state("original", 1)
-            assert await second_store.get("original") == replacement
+            assert await second_store.compare_and_set(original, replacement) is True
+            assert await first_store.compare_and_set(original, replacement) is False
+            assert await first_store.get("original") == replacement
 
             await asyncio.sleep(0.15)
             assert await second_store.get("original") == replacement

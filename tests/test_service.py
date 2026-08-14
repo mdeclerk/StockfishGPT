@@ -9,7 +9,6 @@ from mcp_app.engine import Engine
 from mcp_app.service import (
     ChessService,
     Difficulty,
-    GameBusyError,
     GameNotFoundError,
     GameStatus,
     GameVersionError,
@@ -19,11 +18,9 @@ from mcp_app.service import (
 )
 from mcp_app.store import (
     DEFAULT_GAME_TTL_SECONDS,
-    GameLeaseLostError,
     LocalGameStore,
     StoreDataError,
     StoredGameState,
-    locked,
 )
 
 
@@ -161,8 +158,7 @@ async def test_invalid_persisted_domain_values_are_typed_store_errors() -> None:
     store = LocalGameStore()
     service = ChessService(FirstMoveEngine(), store)
     record = StoredGameState("broken", 0, "impossible", (), (None,))
-    async with locked(store, record.game_id) as fence:
-        await store.set(record, fence)
+    await store.compare_and_set(None, record)
 
     with pytest.raises(StoreDataError, match="difficulty"):
         await service.get_game_state(record.game_id)
@@ -278,7 +274,7 @@ def test_status_detects_fifty_move_rule() -> None:
 
 
 @pytest.mark.asyncio
-async def test_concurrent_mutations_on_one_game_are_rejected_as_busy() -> None:
+async def test_concurrent_mutations_on_one_game_conflict_on_version() -> None:
     class YieldingEngine(FirstMoveEngine):
         async def analyze(
             self,
@@ -300,49 +296,33 @@ async def test_concurrent_mutations_on_one_game_are_rejected_as_busy() -> None:
         return_exceptions=True,
     )
 
+    # Both requests run the engine now that no lock gates them; the loser is
+    # rejected when its compare-and-set finds the version already advanced.
     assert sum(not isinstance(result, Exception) for result in results) == 1
-    assert sum(isinstance(result, GameBusyError) for result in results) == 1
+    assert sum(isinstance(result, GameVersionError) for result in results) == 1
     assert (await service.get_game_state(game.game_id)).version == 1
 
 
 @pytest.mark.asyncio
-async def test_busy_game_rejects_requests_before_any_engine_work() -> None:
-    engine = FirstMoveEngine()
-    store = LocalGameStore()
-    service = ChessService(engine, store)
+async def test_game_expiring_during_analysis_is_reported_as_not_found() -> None:
+    clock = ManualClock()
+
+    class ExpiringEngine(FirstMoveEngine):
+        async def analyze(
+            self,
+            board: chess.Board,
+            *,
+            multipv: int,
+            nodes: int,
+        ) -> list[chess.engine.InfoDict]:
+            clock.advance(DEFAULT_GAME_TTL_SECONDS + 1)
+            return await super().analyze(board, multipv=multipv, nodes=nodes)
+
+    store = LocalGameStore(clock=clock)
+    service = ChessService(ExpiringEngine(), store)
     game = await service.start_game()
 
-    async with locked(store, game.game_id):
-        with pytest.raises(GameBusyError, match="busy"):
-            await service.play_white_move(game.game_id, 0, "e2e4")
-        with pytest.raises(GameBusyError, match="busy"):
-            await service.analyze_position(game.game_id)
-        with pytest.raises(GameBusyError, match="busy"):
-            await service.undo_white_move(game.game_id, 0)
-        with pytest.raises(GameBusyError, match="busy"):
-            await service.reset_game(game.game_id, 0)
-
-    assert engine.calls == []
-
-
-@pytest.mark.asyncio
-async def test_lost_lock_lease_on_commit_is_a_version_conflict() -> None:
-    class LeaseLosingStore(LocalGameStore):
-        def __init__(self) -> None:
-            super().__init__()
-            self.sets = 0
-
-        async def set(self, record: StoredGameState, fence: str) -> None:
-            self.sets += 1
-            if self.sets > 1:
-                raise GameLeaseLostError("lock lease expired")
-            await super().set(record, fence)
-
-    store = LeaseLosingStore()
-    service = ChessService(FirstMoveEngine(), store)
-    game = await service.start_game()
-
-    with pytest.raises(GameVersionError, match="current version is 0"):
+    with pytest.raises(GameNotFoundError, match="not found"):
         await service.play_white_move(game.game_id, 0, "e2e4")
 
 
