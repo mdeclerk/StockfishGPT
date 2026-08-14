@@ -41,7 +41,7 @@ class RedisGameStore:
         self._client = client
         self._compare_and_set = client.register_script(_CAS_SCRIPT)
         self._ttl_milliseconds = max(1, round(ttl_seconds * 1000))
-        self._record_prefix = f"{namespace}:{{games}}:record:"
+        self._record_prefix = f"{namespace}:record:"
         self._close_client = close_client
 
     @classmethod
