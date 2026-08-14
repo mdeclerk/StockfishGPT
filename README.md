@@ -28,11 +28,7 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
    docker compose up
    ```
 
-   Find public tunnel url `https://*.trycloudflare.com` in console output or search log explicitly:
-
-   ```sh
-   docker compose logs tunnel | grep trycloudflare
-   ```
+   Find public tunnel url `https://*.trycloudflare.com` in console output or explicitly with `docker compose logs tunnel | grep trycloudflare`
 
 3. **Add MCP App in [ChatGPT](https://www.chatgpt.com):** 
 
@@ -58,7 +54,7 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
 
 ### Build & Run
 
-Build and run MCP app with endpoint `http://localhost:8000/mcp`:
+Build and run with endpoint `http://localhost:8000/mcp`:
 
 ```sh
 npm --prefix widget ci
@@ -92,13 +88,6 @@ uv run mypy
 uv run pytest
 ```
 
-Redis adapter tests use FakeRedis by default. To include the real Redis
-integration suite, provide a disposable database:
-
-```sh
-TEST_REDIS_URL=redis://localhost:6379/15 uv run pytest
-```
-
 ### Frontend dev server
 
 Test React widget using Vite dev server with endpoint `http://localhost:5173/`:
@@ -118,13 +107,13 @@ Run app and start the inspector `npx @modelcontextprotocol/inspector@latest` wit
 
 Full e2e experience on ChatGPT target:
 
-- Run app (use local in-memory game store, no Redis):
+- Run app (use local in-memory game store by default, no Redis):
 
   ```sh
   uv run mcp-app
   ```
 
-- Public tunnel 
+- Public tunnel
 
   ```sh
   cloudflared tunnel --no-autoupdate --url http://localhost:8000
@@ -134,7 +123,7 @@ Full e2e experience on ChatGPT target:
 
 ## Architecture
 
-The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`). The chess service uses an injected game store: local memory when `REDIS_URL` is unset, or Redis for durable state shared safely across app replicas.
+The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`). The chess service uses local in-memory store by default or Redis when `REDIS_URL` is set for production.
 
 > ⚠️ `ui/update-model-context` cannot currently be applied reliably due to [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
 
@@ -158,16 +147,16 @@ The server owns each game and returns complete authoritative snapshots. The widg
 .
 ├── .github/workflows/    # GitHub CI
 ├── src/mcp_app/
-│   ├── mcp/              # FastMCP and wire schemas
-│   ├── service/          # Chess service and domain models
+│   ├── mcp/              # FastMCP and schemas
+│   ├── service/          # Chess service and models
 │   ├── engine/           # Stockfish engine
-│   ├── store/            # Local in-memory and Redis game store
-│   └── main.py           # Configuration, composition root, CLI
+│   ├── store/            # Local in-memory and Redis store
+│   └── main.py           # Settings, composition root, CLI
 ├── widget/               # React chess widget
 ├── tests/                # Backend test suite
 ├── Dockerfile            # Production container image
-├── docker-compose.yml    # Redis, application, and tunnel setup
-└── pyproject.toml        # Python project and tooling config
+├── docker-compose.yml    # Redis, mcp-app, and tunnel containers
+└── pyproject.toml        # Python project config
 ```
 
 ## License
