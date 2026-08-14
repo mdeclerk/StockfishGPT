@@ -242,12 +242,11 @@ class ChessService:
     @classmethod
     def _choose(cls, evaluation: Evaluation, difficulty: Difficulty) -> Move:
         preset = _PRESETS[difficulty]
-        # Zero temperature is the argmax limit of the weighting below, which
-        # would divide by it.
+        # Zero temperature is the argmax limit, and would divide by zero below.
         if preset.temperature <= 0:
             return evaluation.best
 
-        # The best candidate always survives at loss 0, so `viable` is never empty.
+        # The best candidate always survives at loss 0, so this is never empty.
         viable = cls._viable_candidates(evaluation, preset.maximum_loss)
         moves = tuple(move for move, _ in viable)
         weights = tuple(math.exp(-loss / preset.temperature) for _, loss in viable)

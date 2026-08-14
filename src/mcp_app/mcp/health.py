@@ -10,8 +10,7 @@ from mcp_app.service import ChessService, ServiceStatus
 def register_health_route(mcp: FastMCP, service: ChessService) -> None:
     """Register the liveness route."""
 
-    # `custom_route` carries no return annotation upstream, so it erases the
-    # handler's type; the handler itself stays checked.
+    # `custom_route` is unannotated upstream, so it erases the handler's type.
     @mcp.custom_route(  # type: ignore[untyped-decorator]
         "/health", methods=["GET"], include_in_schema=False
     )

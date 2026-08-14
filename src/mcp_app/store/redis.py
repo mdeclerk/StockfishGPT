@@ -39,6 +39,7 @@ class RedisGameStore:
         if not namespace:
             raise ValueError("namespace must not be empty")
         self._client = client
+        self._compare_and_set = client.register_script(_CAS_SCRIPT)
         self._ttl_milliseconds = max(1, round(ttl_seconds * 1000))
         self._record_prefix = f"{namespace}:{{games}}:record:"
         self._close_client = close_client
@@ -90,13 +91,9 @@ class RedisGameStore:
             )
             return bool(acquired)
         result = await self._execute(
-            self._client.eval(
-                _CAS_SCRIPT,
-                1,
-                key,
-                self._serialize(expected),
-                payload,
-                self._ttl_milliseconds,
+            self._compare_and_set(
+                keys=(key,),
+                args=(self._serialize(expected), payload, self._ttl_milliseconds),
             )
         )
         return bool(result)

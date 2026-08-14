@@ -218,6 +218,9 @@ async def test_owned_redis_client_is_closed_when_startup_fails() -> None:
         def __init__(self) -> None:
             self.closed = False
 
+        def register_script(self, script: str) -> object:
+            return object()
+
         async def ping(self) -> bool:
             raise RedisConnectionError("offline")
 
