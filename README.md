@@ -12,8 +12,8 @@
 
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
 
-<p align="center">
-  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="800">
+<p align="left">
+  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="600">
 </p>
 
 ## Quick Start
@@ -123,12 +123,14 @@ Full e2e experience on ChatGPT target:
 
 ## Architecture
 
+### MCP Communication
+
 The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`). The chess service uses local in-memory store by default or Redis when `REDIS_URL` is set for production.
 
 > ⚠️ `ui/update-model-context` cannot currently be applied reliably due to [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
 
-<p align="center">
-  <img src="docs/architecture.drawio.png" alt="StockfishGPT architecture" width="741">
+<p align="left">
+  <img src="docs/mcp_architecture.drawio.png" alt="StockfishGPT architecture" width="600">
 </p>
 
 
@@ -140,6 +142,14 @@ The server owns each game and returns complete authoritative snapshots. The widg
 | `undo_white_move` | `game_id`, `version` | `GameState` | app | W |
 | `get_game_state` | `game_id` | `GameState` | model + app | R |
 | `analyze_position` | `game_id` | `PositionAnalysis` | model + app | R |
+
+### MCP-App Layers
+
+Responsibilities are separated by layer: the MCP server exposes tools, the chess service owns game logic, the store persists game state, and the engine evaluates positions. The store runs in-process by default and switches to out-of-process Redis when `REDIS_URL` is configured.
+
+<p align="left">
+  <img src="docs/app_architecture.drawio.png" alt="StockfishGPT architecture" width="500">
+</p>
 
 ## Project Structure
 
