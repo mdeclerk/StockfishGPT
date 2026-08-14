@@ -1,6 +1,5 @@
 """Redis-backed game storage."""
 
-import json
 from typing import Any, Self
 
 from pydantic import TypeAdapter
@@ -13,7 +12,6 @@ from .errors import StoreDataError, StoreUnavailableError
 from .local import DEFAULT_GAME_TTL_SECONDS
 from .models import StoredGameState
 
-_SCHEMA_VERSION = 1
 _RECORD_ADAPTER: TypeAdapter[StoredGameState] = TypeAdapter(StoredGameState)
 
 _CAS_SCRIPT = """
@@ -115,24 +113,11 @@ class RedisGameStore:
 
     @staticmethod
     def _serialize(record: StoredGameState) -> bytes:
-        data = _RECORD_ADAPTER.dump_python(record, mode="json")
-        data["schema"] = _SCHEMA_VERSION
-        return json.dumps(
-            data,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        ).encode()
+        return _RECORD_ADAPTER.dump_json(record)
 
     @staticmethod
     def _deserialize(payload: bytes | str) -> StoredGameState:
         try:
-            data = json.loads(payload)
-            is_current_schema = (
-                isinstance(data, dict) and data.pop("schema", None) == _SCHEMA_VERSION
-            )
-            if not is_current_schema:
-                raise ValueError("unsupported stored-game-state schema")
-            return _RECORD_ADAPTER.validate_python(data)
-        except (TypeError, ValueError, json.JSONDecodeError) as error:
+            return _RECORD_ADAPTER.validate_json(payload)
+        except ValueError as error:
             raise StoreDataError("stored game state is malformed") from error

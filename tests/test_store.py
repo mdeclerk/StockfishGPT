@@ -185,7 +185,9 @@ async def test_redis_store_serializes_records_and_rejects_malformed_data() -> No
     store = RedisGameStore(client, namespace="serialization-test")
     record = stored_game_state("game", 1)
     try:
-        assert RedisGameStore._deserialize(RedisGameStore._serialize(record)) == record
+        payload = RedisGameStore._serialize(record)
+        assert b'"schema"' not in payload
+        assert RedisGameStore._deserialize(payload) == record
         await client.set(store._record_key("broken"), b"not-json")
         with pytest.raises(StoreDataError, match="malformed"):
             await store.get("broken")
