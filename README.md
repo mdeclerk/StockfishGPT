@@ -67,7 +67,7 @@ uv run mcp-app
 | --- | --- | --- |
 | `HOST` | `--host` | `127.0.0.1` |
 | `PORT` | `--port` | `8000` |
-| `WIDGET_DIR` | `--widget-dir`, `--wdir` | `widget/dist` |
+| `WIDGET_DIR` | `--widget-dir` | `widget/dist` |
 | `STOCKFISH_PATH` | `--stockfish-path` | Resolve from `PATH` |
 | `REDIS_URL` | `--redis-url` | Local in-memory storage |
 

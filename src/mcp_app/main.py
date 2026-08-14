@@ -48,7 +48,6 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         cli_kebab_case=True,
         cli_prog_name="mcp-app",
-        cli_shortcuts={"widget-dir": "wdir"},
         cli_show_env_vars=True,
         env_file=None,
         extra="ignore",

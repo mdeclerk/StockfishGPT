@@ -138,30 +138,6 @@ def test_dotenv_file_is_not_loaded(
     assert settings.port == 8000
 
 
-def test_cli_accepts_widget_directory_shortcut(tmp_path: Path) -> None:
-    directory = make_widget_dir(tmp_path)
-
-    settings = Settings.from_args(["--wdir", str(directory)])
-
-    assert settings.widget_dir == directory
-
-
-@pytest.mark.parametrize(
-    "option",
-    ["--widget_dir", "--stockfish_path", "--redis_url"],
-)
-def test_cli_rejects_removed_underscore_options(
-    option: str,
-    tmp_path: Path,
-) -> None:
-    directory = make_widget_dir(tmp_path)
-
-    with pytest.raises(SystemExit) as raised:
-        Settings.from_args(["--widget-dir", str(directory), option, "value"])
-
-    assert raised.value.code == 2
-
-
 def test_cli_help_uses_existing_descriptions(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -171,7 +147,7 @@ def test_cli_help_uses_existing_descriptions(
     assert raised.value.code == 0
     output = capsys.readouterr().out
     assert "Run the StockfishGPT MCP app." in output
-    assert "--widget-dir, --wdir" in output
+    assert "--widget-dir Path" in output
     assert "Vite build output directory containing index.html" in output
     assert "--stockfish-path" in output
     assert "Path to the Stockfish executable" in output
