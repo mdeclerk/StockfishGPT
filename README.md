@@ -8,6 +8,7 @@
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev)
 [![Vite](https://img.shields.io/badge/Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev)
 [![Redis](https://img.shields.io/badge/Redis-FF4438?logo=redis&logoColor=white)](https://redis.io)
+[![nginx](https://img.shields.io/badge/nginx-009639?logo=nginx&logoColor=white)](https://nginx.org)
 [![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com)
 
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
@@ -20,7 +21,7 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
 
 1. **Install [Docker](https://docs.docker.com/get-docker/).**
 
-2. **Start MCP App, Redis, HTTPS Tunnel:**
+2. **Start Ingress, MCP App, Redis, HTTPS Tunnel:**
    
    Spin up containers:
 
@@ -28,13 +29,17 @@ StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-bas
    docker compose up
    ```
 
-   Find public tunnel url `https://*.trycloudflare.com` in console output or explicitly with `docker compose logs tunnel | grep trycloudflare`
+   Find public tunnel url `https://*.trycloudflare.com` in console output or explicitly with
+
+   ```sh
+   docker compose logs tunnel | grep trycloudflare
+   ```
 
 3. **Add MCP App in [ChatGPT](https://www.chatgpt.com):** 
 
    Activate [Developer Mode](https://developers.openai.com/plugins/deploy/connect-chatgpt) (Settings → Security and login → Developer mode), then add a new plugin:
    - Name: `StockfishGPT`
-   - URL: url from step 2 — don't forget to append `/mcp`!
+   - URL: public tunnel url from step 2 — don't forget to append `/mcp`!
    - No Auth
 
 4. **Start App:**
@@ -133,7 +138,6 @@ The server owns each game and returns complete authoritative snapshots. The widg
   <img src="docs/mcp_architecture.drawio.png" alt="StockfishGPT architecture" width="600">
 </p>
 
-
 | MCP Tool | Arguments | Response | Visibility | R/W |
 | --- | --- | --- | --- | --- |
 | `start_game` | `difficulty` | `GameState` | model | W |
@@ -142,6 +146,12 @@ The server owns each game and returns complete authoritative snapshots. The widg
 | `undo_white_move` | `game_id`, `version` | `GameState` | app | W |
 | `get_game_state` | `game_id` | `GameState` | model + app | R |
 | `analyze_position` | `game_id` | `PositionAnalysis` | model + app | R |
+
+### Deployment topology
+
+```text
+cloudflared ──► nginx ──► mcp-app × N ──► redis
+```
 
 ### MCP-App Layers
 
@@ -164,8 +174,9 @@ Responsibilities are separated by layer: the MCP server exposes tools, the chess
 │   └── main.py           # Settings, composition root, CLI
 ├── widget/               # React chess widget
 ├── tests/                # Backend test suite
+├── nginx/                # Ingress config: load balancing and rate limiting
 ├── Dockerfile            # Production container image
-├── docker-compose.yml    # Redis, mcp-app, and tunnel containers
+├── docker-compose.yml    # nginx, redis, mcp-app, and tunnel containers
 └── pyproject.toml        # Python project config
 ```
 
