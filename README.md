@@ -14,123 +14,60 @@
 StockfishGPT is an [OpenAI Apps SDK](https://developers.openai.com/apps-sdk)-based App for playing White against Stockfish in ChatGPT, with an interactive React board and engine-grounded coaching.
 
 <p align="left">
-  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="600">
+  <img src="docs/screenshot.drawio.png" alt="StockfishGPT screenshots" width="720">
 </p>
 
-## Quick Start
+## Quickstart
 
-1. **Install [Docker](https://docs.docker.com/get-docker/).**
+1. **Deploy locally, described [here](#local-deployment)**
 
-2. **Start Ingress, MCP App, Redis, HTTPS Tunnel:**
-   
-   Spin up containers:
+2. **Connect to ChatGPT, described [here](https://developers.openai.com/plugins/deploy/connect-chatgpt)**
 
-   ```sh
-   docker compose up
-   ```
-
-   Find public tunnel url `https://*.trycloudflare.com` in console output or explicitly with
-
-   ```sh
-   docker compose logs tunnel | grep trycloudflare
-   ```
-
-3. **Add MCP App in [ChatGPT](https://www.chatgpt.com):** 
-
-   Activate [Developer Mode](https://developers.openai.com/plugins/deploy/connect-chatgpt) (Settings → Security and login → Developer mode), then add a new plugin:
+   > ⚠️ Make sure **Developer Mode** is activated (Settings → Security and login → Developer mode).
    - Name: `StockfishGPT`
-   - URL: public tunnel url from step 2 — don't forget to append `/mcp`!
+   - URL: public tunnel URL from step 1 — don't forget to append `/mcp`!
    - No Auth
 
-4. **Start App:**
+3. **Play in [ChatGPT](https://www.chatgpt.com)**
 
    ```sh
    @StockfishGPT play
    ```
 
-## Local Development
+## Deployment
 
-### Prerequisites
+### Local deployment
 
-- [Python](https://www.python.org/downloads/) & [uv](https://docs.astral.sh/uv/getting-started/installation/)
-- [Node.js](https://nodejs.org/en/download) & [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
-- [Stockfish](https://stockfishchess.org/download/)
-- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/)
-
-### Build & Run
-
-Build and run with endpoint `http://localhost:8000/mcp`:
+Install [Docker](https://docs.docker.com/get-docker/), start containers:
 
 ```sh
-npm --prefix widget ci
-npm --prefix widget run build
-uv sync
-uv run mcp-app
+docker compose up
 ```
 
-| Environment | CLI override | Default |
+Find the public tunnel URL `https://*.trycloudflare.com` in the console output, or retrieve it explicitly before connecting with ChatGPT:
+
+```sh
+docker compose logs tunnel | grep trycloudflare
+```
+
+Docker Compose topology: ChatGPT ─► cloudflared ─► nginx ─► mcp-app ─► Redis
+
+### Cloud deployment
+
+CI builds the multi-architecture Docker image [stockfishgpt:latest](https://github.com/mdeclerk/StockfishGPT/pkgs/container/stockfishgpt) on every push to `main`. Container configuration:
+
+| Environment | When needed | Default |
 | --- | --- | --- |
-| `HOST` | `--host` | `127.0.0.1` |
-| `PORT` | `--port` | `8000` |
-| `WIDGET_DIR` | `--widget-dir` | `widget/dist` |
-| `STOCKFISH_PATH` | `--stockfish-path` | unset ─► Resolve from `PATH` |
-| `REDIS_URL` | `--redis-url` | unset ─► Local in-memory storage |
+| `PORT` | When the platform requires a different port | `8000` |
+| `REDIS_URL` | Required for multiple replicas | Unset ─► In-process store fallback |
 
-### Tests
-
-Frontend:
-
-```sh
-npm --prefix widget test
-```
-
-Backend:
-
-```sh
-uv run ruff check .
-uv run ruff format --check .
-uv run mypy
-uv run pytest
-```
-
-### Frontend dev server
-
-Test React widget using Vite dev server with endpoint `http://localhost:5173/`:
-
-```sh
-npm --prefix widget run dev
-```
-
-### MCP Inspector
-
-Run app and start the inspector `npx @modelcontextprotocol/inspector@latest` with following settings:
-- URL: `http://localhost:8000/mcp`
-- Transport: `Streamable HTTP`
-- Connection: `Via Proxy`
-
-### ChatGPT
-
-Full e2e experience on ChatGPT target:
-
-- Run app (use local in-memory game store by default, no Redis):
-
-  ```sh
-  uv run mcp-app
-  ```
-
-- Public tunnel
-
-  ```sh
-  cloudflared tunnel --no-autoupdate --url http://localhost:8000
-  ```
-
-- Add app as ChatGPT Plugin as described in [Quick Start](#quick-start)
+Intended cloud topology: ChatGPT ─► HTTPS Ingress / Load Balancer ─► StockfishGPT (× N Replicas) ─► Redis
 
 ## Architecture
 
-### MCP Communication
+### MCP integration
 
-The server owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`). The chess service uses local in-memory store by default or Redis when `REDIS_URL` is set for production.
+The MCP app owns each game and returns complete authoritative snapshots. The widget is a display client: it submits actions, renders the returned FEN and history, and keeps only ephemeral presentation state. MCP HTTP transport stays stateless (`stateless_http=True`).
 
 > ⚠️ `ui/update-model-context` cannot currently be applied reliably due to [known upstream issue #221](https://github.com/openai/openai-apps-sdk-examples/issues/221).
 
@@ -147,13 +84,7 @@ The server owns each game and returns complete authoritative snapshots. The widg
 | `get_game_state` | `game_id` | `GameState` | model + app | R |
 | `analyze_position` | `game_id` | `PositionAnalysis` | model + app | R |
 
-### Deployment topology
-
-```text
-cloudflared ──► nginx ──► mcp-app × N ──► redis
-```
-
-### MCP-App Layers
+### MCP app layers
 
 Responsibilities are separated by layer: the MCP server exposes tools, the chess service owns game logic, the store persists game state, and the engine evaluates positions. The store runs in-process by default and switches to out-of-process Redis when `REDIS_URL` is configured.
 
@@ -161,7 +92,7 @@ Responsibilities are separated by layer: the MCP server exposes tools, the chess
   <img src="docs/app_architecture.drawio.png" alt="StockfishGPT architecture" width="500">
 </p>
 
-## Project Structure
+### Project layout
 
 ```text
 .
@@ -170,7 +101,7 @@ Responsibilities are separated by layer: the MCP server exposes tools, the chess
 │   ├── mcp/              # FastMCP and schemas
 │   ├── service/          # Chess service and models
 │   ├── engine/           # Stockfish engine
-│   ├── store/            # Local in-memory and Redis store
+│   ├── store/            # Redis store, in-memory fallback
 │   └── main.py           # Settings, composition root, CLI
 ├── widget/               # React chess widget
 ├── tests/                # Backend test suite
@@ -179,6 +110,64 @@ Responsibilities are separated by layer: the MCP server exposes tools, the chess
 ├── docker-compose.yml    # nginx, redis, mcp-app, and tunnel containers
 └── pyproject.toml        # Python project config
 ```
+
+## Local development
+
+### Prerequisites
+
+- [Python](https://www.python.org/downloads/) & [uv](https://docs.astral.sh/uv/getting-started/installation/)
+- [Node.js](https://nodejs.org/en/download) & [npm](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm)
+- [Stockfish](https://stockfishchess.org/download/)
+- [Redis](https://redis.io/docs/latest/operate/oss_and_stack/install/) (Optional)
+- [cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/downloads/) (Optional: only needed for ChatGPT)
+
+### Run app
+
+```sh
+npm --prefix widget ci
+npm --prefix widget run build
+uv sync
+uv run mcp-app
+```
+
+| Environment | CLI override | Default |
+| --- | --- | --- |
+| `HOST` | `--host` | `127.0.0.1` |
+| `PORT` | `--port` | `8000` |
+| `WIDGET_DIR` | `--widget-dir` | `widget/dist` |
+| `STOCKFISH_PATH` | `--stockfish-path` | unset ─► Resolve from `PATH` |
+| `REDIS_URL` | `--redis-url` | unset ─► Fallback to in-process store |
+
+### Tests
+
+```sh
+# Frontend
+npm --prefix widget test
+
+# Backend
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy
+uv run pytest
+```
+
+### Frontend dev server
+
+```sh
+npm --prefix widget run dev
+```
+
+### MCP inspector
+
+```sh
+npx @modelcontextprotocol/inspector@v1-latest
+```
+
+Use settings:
+
+- URL: `http://localhost:8000/mcp`
+- Transport: `Streamable HTTP`
+- Connection: `Via Proxy`
 
 ## License
 
